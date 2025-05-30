@@ -73,7 +73,18 @@ class LeadResource extends Resource implements HasShieldPermissions
 
     protected static ?string $navigationGroup = 'Gestión LEADS';
 
-    protected static ?string $navigationLabel = 'Todos los Leads';
+    //protected static ?string $navigationLabel = 'Todos los Leads';
+
+    public static function getNavigationLabel(): string
+{
+    if (auth()->check() && auth()->user()->hasRole('comercial')) {
+        return 'Mis Leads';
+    }
+
+    return 'Todos los Leads';
+}
+
+
     protected static ?string $modelLabel = 'Lead';
     protected static ?string $pluralModelLabel = 'Todos los Leads';
 
@@ -91,13 +102,22 @@ class LeadResource extends Resource implements HasShieldPermissions
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with(['comentarios.user']);
+            // Empieza con la consulta base del recurso
+            $query = parent::getEloquentQuery()->with(['comentarios.user']);
+
+            // Si el usuario es comercial, sólo ve sus leads
+            if (auth()->user()->hasRole('comercial')) {
+                $query->where('asignado_id', auth()->id());
+            }
+
+            return $query;
+
     }
 
 public static function shouldRegisterNavigation(): bool
 {
     // Solo los super_admins verán el recurso “Todos los Leads”
-    return auth()->user()?->hasRole('super_admin');
+    return auth()->user()?->hasRole(['super_admin', 'comercial']);
 }
 
 
@@ -1051,12 +1071,7 @@ protected static function registrarInteraccion(Lead $record, string $campoContad
         ->paginated([25, 50, 100, 'all']) // Ajusta opciones si quieres
         ->striped()
         ->recordUrl(null)    // Esto quita la navegación al hacer clic en la fila
-->modifyQueryUsing(fn (Builder $query) =>
-    request()->query('mis') === 'true' && auth()->user()->hasRole('comercial')
-        ? $query->where('asignado_id', auth()->id())
-        : $query
-)
-        // ->poll('30s') // Quita o comenta si no necesitas refresco automático constante
+
         ->defaultSort('created_at', 'desc') // Ordenar por defecto
         ->columns([
             // Columna Total Interacciones (Adaptada)

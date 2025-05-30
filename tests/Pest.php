@@ -12,8 +12,9 @@
 */
 
 pest()->extend(Tests\TestCase::class)
-    ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
+   /*  ->use(Illuminate\Foundation\Testing\RefreshDatabase::class) */
     ->in('Feature');
+uses(Pest\Livewire\InteractsWithLivewire::class)->in('Feature');
 
 /*
 |--------------------------------------------------------------------------

@@ -18,7 +18,7 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Filament\Support\Enums\MaxWidth;
-use App\Filament\Auth\Login;
+use App\Filament\Pages\Auth\Login;
 use App\Filament\Resources\VentaResource\Widgets\AnnualSalesChart;
 use App\Filament\Widgets\ClientesPorMesChart;
 
@@ -61,7 +61,7 @@ class AdminPanelProvider extends PanelProvider
                 ClientesPorMesChart::class, 
             ])
 
-            ->navigationItems([
+         /*    ->navigationItems([
                 NavigationItem::make('Mis Leads')
                     ->url(fn (): string => LeadResource::getUrl('index', ['mis' => 'true']))
                     ->icon('heroicon-m-clipboard')
@@ -71,7 +71,7 @@ class AdminPanelProvider extends PanelProvider
                     ->visible(fn (): bool => auth()->user()->hasRole('comercial')),
 
             
-            ])
+            ]) */
 
 
 
