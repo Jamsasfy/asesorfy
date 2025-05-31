@@ -54,7 +54,7 @@ class AdminPanelProvider extends PanelProvider
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
                 Pages\Dashboard::class,
-                            MisClientes::class,              // ← añade tu página aquí
+                           
 
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
@@ -65,14 +65,7 @@ class AdminPanelProvider extends PanelProvider
                 ClientesPorMesChart::class, 
             ])
 
-           ->navigationItems([
-               NavigationItem::make('Mis clientes asignados')
-    ->url(fn () => MisClientes::getUrl())      // 🚩 mantiene la closure
-                ->icon('heroicon-m-user-group')
-                ->group('CRM')
-                ->visible(fn () => auth()->user()->hasRole('asesor')),
-                    ])
-
+          
 
 
             ->middleware([

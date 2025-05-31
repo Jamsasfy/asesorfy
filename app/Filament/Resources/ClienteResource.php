@@ -848,7 +848,7 @@ class ClienteResource extends Resource implements HasShieldPermissions
             'create' => Pages\CreateCliente::route('/create'),
             'view'   => Pages\ViewCliente::route('/{record}'),     // ← esta línea
             'edit' => Pages\EditCliente::route('/{record}/edit'),
-        'mis-clientes' => Pages\MisClientes::route('/mis-clientes'),
+       
 
         ];
     }
