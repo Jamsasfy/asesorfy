@@ -19,6 +19,8 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Filament\Support\Enums\MaxWidth;
 use App\Filament\Pages\Auth\Login;
+use App\Filament\Resources\ClienteResource;
+use App\Filament\Resources\ClienteResource\Pages\MisClientes;
 use App\Filament\Resources\VentaResource\Widgets\AnnualSalesChart;
 use App\Filament\Widgets\ClientesPorMesChart;
 
@@ -52,6 +54,8 @@ class AdminPanelProvider extends PanelProvider
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
                 Pages\Dashboard::class,
+                            MisClientes::class,              // ← añade tu página aquí
+
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
@@ -61,17 +65,15 @@ class AdminPanelProvider extends PanelProvider
                 ClientesPorMesChart::class, 
             ])
 
-         /*    ->navigationItems([
-                NavigationItem::make('Mis Leads')
-                    ->url(fn (): string => LeadResource::getUrl('index', ['mis' => 'true']))
-                    ->icon('heroicon-m-clipboard')
-                    ->group('Mi espacio de trabajo')
-                    ->sort(1)
-                // ->shouldOpenInNewTab(false)
-                    ->visible(fn (): bool => auth()->user()->hasRole('comercial')),
+           ->navigationItems([
+               NavigationItem::make('Mis clientes asignados')
+    ->url(fn () => MisClientes::getUrl())      // 🚩 mantiene la closure
+                ->icon('heroicon-m-user-group')
+                ->group('CRM')
+                ->visible(fn () => auth()->user()->hasRole('asesor')),
 
-            
-            ]) */
+                    
+                    ])
 
 
 

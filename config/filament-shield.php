@@ -47,7 +47,7 @@ return [
             'force_delete_any',
         ],
 
-        'page' => 'page',
+         'page'   => ['view'],    // ← antes era string, ahora es array
         'widget' => 'widget',
     ],
 
@@ -57,6 +57,10 @@ return [
         'resources' => true,
         'custom_permissions' => true,
         
+    ],
+
+     'pages' => [
+        'mis-clientes',        // ←  añade aquí el slug de la página
     ],
 
     'generator' => [
@@ -71,6 +75,7 @@ return [
 
         'pages' => [
             'Dashboard',
+            
         ],
 
         'widgets' => [

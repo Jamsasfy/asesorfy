@@ -80,12 +80,12 @@ class ClienteResource extends Resource implements HasShieldPermissions
     {
         return 'warning';
     }
-       // *** IMPORTANTE: Este método controla si el recurso aparece en la navegación y es accesible ***
+      /*  // *** IMPORTANTE: Este método controla si el recurso aparece en la navegación y es accesible ***
        public static function canViewAny(): bool
        {
            // Permite que administradores, supervisores Y asesores lo vean en la navegación.
            return auth()->user()->hasRole('admin') || auth()->user()->hasRole('supervisor') || auth()->user()->hasRole('asesor');
-       }
+       } */
 
 
     public static function form(Form $form): Form
@@ -848,6 +848,8 @@ class ClienteResource extends Resource implements HasShieldPermissions
             'create' => Pages\CreateCliente::route('/create'),
             'view'   => Pages\ViewCliente::route('/{record}'),     // ← esta línea
             'edit' => Pages\EditCliente::route('/{record}/edit'),
+        'mis-clientes' => Pages\MisClientes::route('/mis-clientes'),
+
         ];
     }
 }
