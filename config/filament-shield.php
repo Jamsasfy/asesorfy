@@ -47,7 +47,7 @@ return [
             'force_delete_any',
         ],
 
-         'page'   => ['view'],    // ← antes era string, ahora es array
+         'page'   => 'page',    // ← antes era string, ahora es array
         'widget' => 'widget',
     ],
 

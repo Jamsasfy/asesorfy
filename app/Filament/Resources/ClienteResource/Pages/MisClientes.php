@@ -24,8 +24,5 @@ class MisClientes extends ListRecords
     public function hasTableFilters(): bool { return false; }
     public function canCreate(): bool       { return false; }
 
-public static function canAccess(array $parameters = []): bool
-    {
-        return auth()->user()->can('view_any_cliente');
-    }
+
 }

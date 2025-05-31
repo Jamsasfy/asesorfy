@@ -71,8 +71,6 @@ class AdminPanelProvider extends PanelProvider
                 ->icon('heroicon-m-user-group')
                 ->group('CRM')
                 ->visible(fn () => auth()->user()->hasRole('asesor')),
-
-                    
                     ])
 
 
