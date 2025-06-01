@@ -60,7 +60,7 @@ return [
     ],
 
      'pages' => [
-        'mis-clientes',        // ←  añade aquí el slug de la página
+            // ←  añade aquí el slug de la página
     ],
 
     'generator' => [
