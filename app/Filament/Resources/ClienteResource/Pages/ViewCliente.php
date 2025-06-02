@@ -130,6 +130,9 @@ class ViewCliente extends ViewRecord
             Action::make('cambiar_estado')
             ->label('Cambiar Estado')
             ->color('info')
+             ->visible(fn (ViewRecord $livewire): bool =>
+                    auth()->user()?->can('cambiar_estado_cliente', $livewire->getRecord()) ?? false
+                )
             ->icon('heroicon-o-pencil')
             ->form([
                 Select::make('estado')
@@ -157,7 +160,13 @@ class ViewCliente extends ViewRecord
             ->label('Asignar asesor')
             ->icon('heroicon-o-user-plus')
             ->color('success')
-            ->visible(fn ($record) => is_null($record->asesor_id))
+            ->visible(fn (ViewRecord $livewire): bool =>
+                    // Condición 1: El cliente no debe tener un asesor ya asignado
+                    is_null($livewire->getRecord()->asesor_id) &&
+
+                    // Condición 2: El usuario actual debe tener el permiso para asignar
+                    (auth()->user()?->can('asignar_asesor_cliente', $livewire->getRecord()) ?? false)
+                )
             ->form([
                 Select::make('asesor_id')
                     ->label('Selecciona asesor')
@@ -185,7 +194,13 @@ class ViewCliente extends ViewRecord
             ->label('Cambiar asesor')
             ->icon('heroicon-o-user-minus')
             ->color('danger')
-            ->visible(fn ($record) => ! is_null($record->asesor_id))
+             ->visible(fn (ViewRecord $livewire): bool =>
+                    // Condición 1: El cliente debe tener un asesor asignado actualmente
+                    !is_null($livewire->getRecord()->asesor_id) &&
+
+                    // Condición 2: El usuario actual debe tener el permiso para cambiar asesor
+                    (auth()->user()?->can('cambiar_asesor_cliente', $livewire->getRecord()) ?? false)
+                )
             ->form([
                 Select::make('asesor_id')
                     ->label('Selecciona nuevo asesor')
@@ -214,7 +229,13 @@ class ViewCliente extends ViewRecord
         
         ->button()
         ->color('danger')
-        ->visible(fn ($record) => ! is_null($record->asesor_id))
+       ->visible(fn (ViewRecord $livewire): bool =>
+                    // Condición 1: Lógica de negocio (el botón solo tiene sentido si hay un asesor)
+                    !is_null($livewire->getRecord()->asesor_id) &&
+
+                    // Condición 2: Comprobación de Permiso (esta es la clave)
+                    (auth()->user()?->can('quitar_asesor_cliente', $livewire->getRecord()) ?? false)
+                )
         ->requiresConfirmation()              // pide confirmación
         ->modalHeading('¿Quitar asesor?')
         ->modalDescription('Esto dejará al cliente sin asesor asignado.')
@@ -226,7 +247,8 @@ class ViewCliente extends ViewRecord
                 ->body('El cliente ya no tiene asesor asignado.')
                 ->danger()
                 ->send();
-        }),
+        })
+       ,
 
 
         ];

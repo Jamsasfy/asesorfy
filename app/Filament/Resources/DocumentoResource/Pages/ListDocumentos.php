@@ -6,6 +6,8 @@ use App\Filament\Resources\DocumentoResource;
 use App\Filament\Resources\DocumentoResource\Widgets\DocumentoStats;
 use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
+use Illuminate\Database\Eloquent\Builder; // ¡Importante!
+use Illuminate\Support\Facades\Auth;  
 
 class ListDocumentos extends ListRecords
 {
@@ -25,7 +27,8 @@ class ListDocumentos extends ListRecords
         ];
     }
 
-
+  // ESTE ES EL MÉTODO CLAVE PARA FILTRAR LA TABLA PRINCIPAL
+   
 
 
 }

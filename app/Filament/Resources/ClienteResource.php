@@ -70,6 +70,7 @@ class ClienteResource extends Resource implements HasShieldPermissions
             'quitar_asesor',
             'asignar_asesor',
             'asignacion_masiva_asesor',
+            'cambiar_estado',
         ];
     }
     public static function getNavigationBadge(): ?string

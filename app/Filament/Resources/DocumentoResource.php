@@ -37,6 +37,8 @@ use Filament\Infolists\Components\Actions\Action;
 use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
 use Malzariey\FilamentDaterangepickerFilter\Filters\DateRangeFilter;
 
 class DocumentoResource extends Resource implements HasShieldPermissions
@@ -47,7 +49,7 @@ class DocumentoResource extends Resource implements HasShieldPermissions
 
   //  protected static ?string $navigationIcon = 'icon-customer';
     protected static ?string $navigationGroup = 'Documentos y BBDD';
-    protected static ?string $navigationLabel = 'Documentos de Clienters';
+    protected static ?string $navigationLabel = 'Documentos de Clientes';
     protected static ?string $modelLabel = 'Documento';
     protected static ?string $pluralModelLabel = 'Todos los Documentos';
 
@@ -66,14 +68,60 @@ class DocumentoResource extends Resource implements HasShieldPermissions
         ];
     }
 
-    public static function shouldRegisterNavigation(): bool
-    {
-        return auth()->user()?->hasRole('super_admin');
+    public static function getEloquentQuery(): Builder
+{
+    /** @var \App\Models\User|null $user */
+    $user = Auth::user();
+    $query = static::getModel()::query(); // Comienza con la consulta del modelo del recurso
+
+    if (!$user) {
+        return $query->whereRaw('1 = 0');
     }
-   /*  public static function canAccess(): bool
-    {
-        return auth()->user()?->hasRole('super_admin');
-    } */
+
+    // Descomenta esta línea para depurar quién está accediendo y qué roles tiene:
+    // dd('User in DocumentoResource::getEloquentQuery():', $user->email, $user->getRoleNames()->toArray());
+
+    if ($user->hasRole('super_admin')) {
+        return $query;
+    }
+
+    if ($user->hasRole('asesor')) {
+        return $query->whereHas('cliente', function (Builder $subQuery) use ($user) {
+            $subQuery->where('asesor_id', $user->id);
+        });
+    }
+
+    return $query->whereRaw('1 = 0'); // Default: no data for other roles
+}
+
+
+
+    public static function shouldRegisterNavigation(): bool
+{
+    /** @var \App\Models\User|null $user */
+    $user = auth()->user();
+
+    if (!$user) {
+        return false;
+    }
+
+    // Permitir si es super_admin
+    if ($user->hasRole('super_admin')) {
+        return true;
+    }
+
+    // Permitir si es asesor Y tiene el permiso para ver cualquier documento
+    // (la consulta luego se encargará de filtrar cuáles ve)
+    if ($user->hasRole('asesor')) {
+        return $user->can('view_any_documento');
+    }  
+    if ($user->hasRole('coordinador')) {
+         return $user->can('view_any_documento');
+    } 
+
+    return false; // Por defecto, no mostrar para otros roles
+}
+
 
     
    
@@ -143,9 +191,34 @@ class DocumentoResource extends Resource implements HasShieldPermissions
 
              // Selección de cliente solo visible para roles internos
         Select::make('cliente_id')
-        ->label('Cliente')
-        ->options(Cliente::all()->pluck('razon_social', 'id'))
+        ->label('Cliente')      
+         ->relationship(
+    name: 'cliente',
+    titleAttribute: 'razon_social',
+    modifyQueryUsing: function (Builder $query) {
+        /** @var \App\Models\User|null $user */
+        $user = Auth::user();
+
+        if ($user) {
+            // Para depurar qué roles tiene el usuario actual (puedes descomentar temporalmente):
+            // \Illuminate\Support\Facades\Log::info('Usuario en form cliente_id:', ['email's => $user->email, 'roles' => $user->getRoleNames()->toArray()]);
+
+            if ($user->hasRole('super_admin')) {
+                // El super_admin ve todos los clientes, no se añade ningún filtro aquí.
+                // La consulta base de la relación se usará tal cual.
+            } elseif ($user->hasRole('asesor')) {
+                // Si NO es super_admin PERO SÍ es asesor, filtramos por sus clientes.
+                $query->where('asesor_id', $user->id);
+            }
+           
+        } else {
+            // No hay usuario autenticado (no debería ocurrir en Filament)
+            $query->whereRaw('1 = 0'); // No muestra nada
+        }
+    }
+)
         ->searchable()
+        ->preload()
         ->required(),
     ]);
     }

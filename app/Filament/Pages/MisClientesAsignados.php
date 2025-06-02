@@ -11,7 +11,11 @@ use BezhanSalleh\FilamentShield\Traits\HasPageShield; // El trait de Filament Sh
 use Illuminate\Database\Eloquent\Builder; // Necesario para el tipo de retorno de getTableQuery
 use Illuminate\Support\Facades\Auth;
 use App\Filament\Widgets\AsesorTotalClientesWidget; // Importa la clase del widget
-
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Enums\FiltersLayout;
+use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
+use Malzariey\FilamentDaterangepickerFilter\Filters\DateRangeFilter;
 
 class MisClientesAsignados extends Page implements Tables\Contracts\HasTable // Para poder usar una tabla
 {
@@ -20,6 +24,8 @@ class MisClientesAsignados extends Page implements Tables\Contracts\HasTable // 
 
     // Conservamos el icono que te generó si te gusta, o puedes cambiarlo
     protected static ?string $navigationIcon = 'icon-cliente-asignado'; // Cambié a 'user-group', pero usa el que prefieras
+    protected ?string $subheading = 'Clientes que tienes asignados como asesor' ; // Subtítulo opcional para la página
+
 
     // Propiedades que definimos para la página
     protected static ?string $navigationLabel = 'Mis Clientes Asignados'; // Nombre en el menú
@@ -28,6 +34,19 @@ class MisClientesAsignados extends Page implements Tables\Contracts\HasTable // 
 
     // Vista Blade que se usará para esta página (ya lo tenías)
     protected static string $view = 'filament.pages.mis-clientes-asignados';
+
+    public static function getNavigationBadge(): ?string
+    {
+        /** @var User|null $user */
+        $user = Auth::user();
+            $count = Cliente::where('asesor_id', $user->id)->count();
+            return $count > 0 ? (string) $count : null; // Muestra el conteo si es mayor que 0
+    }
+
+    public static function getNavigationBadgeColor(): string|array|null
+    {
+        return 'warning';
+    }
 
     //livewire:widget
 
@@ -71,55 +90,161 @@ class MisClientesAsignados extends Page implements Tables\Contracts\HasTable // 
     protected function getTableColumns(): array
     {
         return [
-             Tables\Columns\TextColumn::make('razon_social')
-            ->label('Razón Social / Nombre')
-            ->searchable()
-            ->sortable()
-            ->formatStateUsing(fn ($state, $record) => $state ?: ($record->nombre . ' ' . $record->apellidos)), // Muestra razón social o nombre y apellidos
+            TextColumn::make('razon_social')
+                ->label('Razón Social')
+                ->searchable(isIndividual: true)
+                ->sortable()
+                ->formatStateUsing(fn ($state) => $state ?: '-'),
 
-        // O, si prefieres campos separados:
-        // Tables\Columns\TextColumn::make('nombre')
-        //     ->label('Nombre')
-        //     ->searchable()
-        //     ->sortable(),
-        // Tables\Columns\TextColumn::make('apellidos')
-        //     ->label('Apellidos')
-        //     ->searchable()
-        //     ->sortable(),
+            TextColumn::make('dni_cif')
+                ->label('DNI o CIF')
+                ->searchable(isIndividual: true)
+                ->sortable(),
+              
 
-        Tables\Columns\TextColumn::make('dni_cif') // Este también parece un campo importante de tu resource
-            ->label('DNI/CIF')
-            ->searchable(),
+             TextColumn::make('nombre')
+                ->label('Nombre')
+                ->searchable(isIndividual: true)
+                ->sortable()
+                ->toggleable(isToggledHiddenByDefault: true),
 
-        Tables\Columns\TextColumn::make('email_contacto') // Usamos el nombre correcto del campo email
-             ->label('Email')
-             ->searchable(),
+            TextColumn::make('apellidos')
+                ->label('Apellidos')
+                ->searchable(isIndividual: true)
+                ->sortable()
+                ->toggleable(isToggledHiddenByDefault: true),
 
-        Tables\Columns\TextColumn::make('telefono_contacto') // Ya que lo tenemos en ClienteResource
-             ->label('Teléfono')
-             ->searchable(),
+
+            TextColumn::make('tipoCliente.nombre')
+                ->label('Tipo')
+                ->badge()
+                ->sortable(),
+
+            TextColumn::make('estado')
+                ->label('Estado')
+                ->badge()
+                ->color(fn (string $state): string => match ($state) {
+                    'pendiente' => 'warning',
+                    'activo' => 'success',
+                    'impagado' => 'danger',
+                    'bloqueado' => 'gray',
+                    'rescindido' => 'danger',
+                    'baja' => 'gray',
+                    'requiere_atencion' => 'info',
+                    default => 'gray',
+                })
+                ->sortable(),
+
+            TextColumn::make('provincia')
+                ->label('Provincia')
+                ->sortable(),
+
+            TextColumn::make('localidad')
+            ->toggleable(isToggledHiddenByDefault: true)
+                ->sortable(),
+
+            TextColumn::make('telefono_contacto')
+                ->label('Teléfono')
+                ->searchable(isIndividual: true),
+
+            TextColumn::make('email_contacto')
+                ->label('Email')
+                ->searchable(isIndividual: true),
+
+                TextColumn::make('asesor.name')
+                ->label('Asesor')
+                ->badge()
+                ->getStateUsing(fn ($record) =>
+                    $record->asesor
+                        ? $record->asesor->name
+                        : '⚠️ Sin asignar'
+                )
+                ->color(fn ($state) => str_contains($state, 'Sin asignar') ? 'warning' : 'success'),
+
+            TextColumn::make('created_at')
+                ->label('Creado en App')
+                ->dateTime('d/m/y - H:m')
+               
+                ->sortable(),
+
+            TextColumn::make('fecha_alta')
+                ->label('Fecha de Alta')
+                ->dateTime('d/m/y - H:m')
+               
+                ->sortable(),    
+               
+            TextColumn::make('fecha_baja')
+                ->label('Fecha de Baja servicio')
+                ->dateTime('d/m/y - H:m')
+                ->toggleable(isToggledHiddenByDefault: true)
+                ->sortable(),        
+           
+           
         ];
     }
+
+
+    // NUEVO MÉTODO PARA LOS FILTROS
+    protected function getTableFilters(): array
+    {
+        return [
+             SelectFilter::make('estado')
+                ->label('Estado')
+                ->preload()
+                ->options([
+                    'pendiente' => 'Pendiente',
+                    'activo' => 'Activo',
+                    'impagado' => 'Impagado',
+                    'bloqueado' => 'Bloqueado',
+                    'rescindido' => 'Rescindido',
+                    'baja' => 'Baja',
+                    'requiere_atencion' => 'Requiere atención',
+                ])
+                
+                ->searchable(),
+
+            SelectFilter::make('tipo_cliente_id')
+                ->label('Tipo de cliente')
+                ->relationship('tipoCliente', 'nombre')
+                ->preload()
+                ->searchable(),
+
+            SelectFilter::make('provincia')
+                ->label('Provincia')
+                ->options(array_keys(config('provincias.provincias')))
+                ->searchable(),
+               
+            DateRangeFilter::make('fecha_alta')
+                ->label('Alta APP')
+                ->placeholder('Rango de fechas a buscar'),  
+            DateRangeFilter::make('fecha_baja')
+                ->label('Baja APP')
+                ->placeholder('Rango de fechas a buscar'),      
+           
+                ];
+    }
+
+protected function getTableFiltersLayout(): ?FiltersLayout
+{
+    return FiltersLayout::AboveContent;
+}
    protected function getTableActions(): array
     {
         return [
             Tables\Actions\ViewAction::make()
-                ->url(fn (Cliente $record): string => ClienteResource::getUrl('view', ['record' => $record])),
+                ->url(fn (Cliente $record): string => ClienteResource::getUrl('view', ['record' => $record]))
+                ->openUrlInNewTab(),
             Tables\Actions\EditAction::make()
-                ->url(fn (Cliente $record): string => ClienteResource::getUrl('edit', ['record' => $record])),
+                ->url(fn (Cliente $record): string => ClienteResource::getUrl('edit', ['record' => $record]))
+                ->openUrlInNewTab(),
             // No incluimos DeleteAction aquí si la política/permisos de ClienteResource lo manejan
         ];
     }
  
-       protected function getHeaderActions(): array
-    {
-        // Devolvemos un array vacío para no mostrar ninguna acción en la cabecera
-        return [];
-    }
-
-   
-
-
-
-   
+      protected function getHeaderWidgets(): array
+        {
+            return [
+                AsesorTotalClientesWidget::class
+            ];
+        }   
 }
