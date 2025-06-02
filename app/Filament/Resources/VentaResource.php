@@ -34,9 +34,53 @@ class VentaResource extends Resource implements HasShieldPermissions
 
     protected static ?string $navigationIcon = 'heroicon-o-currency-dollar'; // O un icono de venta
     protected static ?string $navigationGroup = 'Gestión LEADS'; // O un grupo propio de Ventas
-    protected static ?string $navigationLabel = 'Admin Ventas';
+   // protected static ?string $navigationLabel = 'Admin Ventas';
     protected static ?string $modelLabel = 'Venta';
     protected static ?string $pluralModelLabel = 'Admin Ventas';
+
+      public static function getNavigationLabel(): string
+    {
+        if (auth()->check() && auth()->user()->hasRole('comercial')) {
+            return 'Mis Ventas';
+        }
+
+        return 'Admin Ventas';
+    }
+    public static function getEloquentQuery(): Builder
+{
+    /** @var \App\Models\User|null $user */
+    $user = Auth::user();
+    // Empezamos con la consulta base y las precargas que ya tenías
+    $query = parent::getEloquentQuery()->with(['items.servicio', 'cliente', 'comercial']); // Añadí cliente y comercial a with para eficiencia
+
+    if (!$user) {
+        return $query->whereRaw('1 = 0'); // No hay usuario, no mostrar nada
+    }
+
+    // Para depurar (descomenta si es necesario):
+    // \Illuminate\Support\Facades\Log::info('User in VentaResource::getEloquentQuery():', ['email' => $user->email, 'roles' => $user->getRoleNames()->toArray()]);
+
+    if ($user->hasRole('super_admin')) {
+        // El super_admin ve todas las ventas
+        return $query;
+    }
+
+    if ($user->hasRole('comercial')) {
+        // El comercial solo ve sus ventas.
+        // Asumiendo que el campo en la tabla 'ventas' es 'user_id' para el comercial.
+        // Si tu campo se llama 'comercial_id', cámbialo aquí.
+        return $query->where('user_id', $user->id);
+    }
+    
+    // Lógica para otros roles (ej. un jefe de ventas podría ver las ventas de su equipo)
+    // if ($user->hasRole('jefe_ventas')) {
+    //     $ids_comerciales_equipo = User::where('jefe_id_en_user_table', $user->id)->pluck('id')->toArray();
+    //     return $query->whereIn('user_id', $ids_comerciales_equipo); // Asume que 'user_id' es el comercial en Venta
+    // }
+
+    // Por defecto, si el rol no está contemplado arriba y no es admin, no muestra ventas.
+    return $query->whereRaw('1 = 0');
+}
 
     public static function getPermissionPrefixes(): array
     {
@@ -47,15 +91,11 @@ class VentaResource extends Resource implements HasShieldPermissions
             'update',
             'delete',
             'delete_any',
+            'boton_crear_venta',
         ];
     }
 
-    public static function getEloquentQuery(): Builder
-    {
-        return parent::getEloquentQuery()
-            // precargamos items y dentro sus servicios
-            ->with(['items.servicio']);
-    }
+    
     public static function form(Form $form): Form
     {
         return $form
@@ -272,6 +312,10 @@ class VentaResource extends Resource implements HasShieldPermissions
     public static function table(Table $table): Table
     {
         return $table
+        ->paginated([25, 50, 100, 'all']) // Ajusta opciones si quieres
+        ->striped()
+        ->recordUrl(null)    // Esto quita la navegación al hacer clic en la fila
+        ->defaultSort('created_at', 'desc') // Ordenar por defecto
             ->columns([
                 Tables\Columns\TextColumn::make('cliente.razon_social')
                     ->label('Cliente')

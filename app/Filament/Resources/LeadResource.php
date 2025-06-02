@@ -1268,6 +1268,7 @@ protected static function registrarInteraccion(Lead $record, string $campoContad
         ->actions([ // Acciones de Fila
             Tables\Actions\ViewAction::make()
                 ->label('') // Sin etiqueta, solo icono
+                ->openUrlInNewTab() // Abrir en nueva pestaña
                 ->tooltip('Ver Detalles'), // Texto al pasar el ratón
 
             Tables\Actions\EditAction::make()

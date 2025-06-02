@@ -38,7 +38,7 @@ use Filament\Infolists\Components\Actions\Action as ActionInfolist;
 use App\Filament\Resources\VentaResource;
 use Filament\Forms\Components\Hidden;
 use Illuminate\Support\HtmlString;
-
+use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 use Filament\Infolists\Components\Grid;
 use Filament\Infolists\Components\Tabs;
 
@@ -732,6 +732,8 @@ class ClienteResource extends Resource implements HasShieldPermissions
               
         ])
         ->bulkActions([
+            ExportBulkAction::make(),
+
 //grupo de asignaciones masivas
             BulkActionGroup::make([
                
