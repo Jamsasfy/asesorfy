@@ -34,7 +34,17 @@ class ViewCliente extends ViewRecord
   
           return 'Cliente: ' . $nombreCliente;
       }
-      // ******************************************************
+     
+      public function getSubheading(): string
+    {
+        $cliente = $this->getRecord();
+
+        // Ejemplo: mostrar el tipo de cliente y el número de documento
+        $tipo = ucfirst($cliente->tipocliente->nombre ?? 'desconocido'); // "persona", "empresa", etc.
+      
+
+        return "Tipo: {$tipo}";
+    }
 
 
     protected function getHeaderActions(): array
