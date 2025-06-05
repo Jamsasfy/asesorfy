@@ -69,6 +69,12 @@ class ServicioResource extends Resource
                             ->default(true)
                             ->label('Servicio Activo')
                             ->columnSpan(1),
+                        Toggle::make('es_tarifa_principal')
+                            ->required()
+                            ->default(true)
+                            ->label('¿Es tarifa principal?')
+                            ->helperText('Si es tarifa principal, se usará como tarifa por defecto para este servicio.')
+                            ->columnSpan(1),    
 
                         Textarea::make('descripcion')
                             ->maxLength(65535)
@@ -98,6 +104,10 @@ class ServicioResource extends Resource
                 IconColumn::make('activo') // Columna de icono para booleano
                     ->boolean()
                     ->sortable(),
+                IconColumn::make('es_tarifa_principal') // Columna de icono para booleano
+                ->label('¿Es tarifa principal?')
+                    ->boolean()
+                    ->sortable(),     
                 // Opcional: ToggleColumn para cambiar activo/inactivo desde la tabla
                 // ToggleColumn::make('activo'),
                 TextColumn::make('created_at')

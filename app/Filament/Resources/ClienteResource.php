@@ -41,6 +41,8 @@ use Illuminate\Support\HtmlString;
 use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 use Filament\Infolists\Components\Grid;
 use Filament\Infolists\Components\Tabs;
+use App\Enums\ServicioTipoEnum;
+use App\Models\Servicio;
 
 
 
@@ -348,14 +350,19 @@ class ClienteResource extends Resource implements HasShieldPermissions
                                 : '⚠️ Sin asignar'
                         )
                         ->color(fn ($state) => str_contains($state, 'Sin asignar') ? 'warning' : 'success'),   
-                        TextEntry::make('fecha_alta')
-                        ->label('Alta servicio')
-                        ->copyable()
-                        ->weight('bold')
-                        ->dateTime('d/m/y - H:m')
-                        ->color('primary'),           
-                            
-                        ])
+                         
+                         TextEntry::make('tarifa_principal_activa_con_precio') // <--- USA EL NUEVO ACCESOR
+                        ->label('Tarifa Base')
+                        ->placeholder('Ninguna')
+                        ->badge() // La insignia se aplicará a toda la cadena "FYCA - 75,00 €"
+                        ->tooltip(function ($record) {
+                            // El tooltip puede seguir mostrando solo el nombre completo del servicio
+                            if ($record->tarifa_principal_activa && $record->tarifa_principal_activa->servicio) {
+                                return $record->tarifa_principal_activa->servicio->nombre;
+                            }
+                            return null; 
+                        }),
+                                            ])
                     ->columns(3)
                     ->columnSpan(1),
 
@@ -415,36 +422,7 @@ class ClienteResource extends Resource implements HasShieldPermissions
 
                         Tabs::make('Datos cliente')
                         ->tabs([
-                            Tabs\Tab::make('Datos bancarios')                            
-                                ->schema([
-                                    TextEntry::make('iban_asesorfy')
-                                    ->label(new HtmlString('<span class="font-semibold">Cuenta bancaria cuotas AsesorFy</span>'))                                
-                                    ->copyable()
-                                    ->weight('bold')
-                                    ->state(fn ($record) => $record->iban_asesorfy ?: 'No informado')
-                                    ->color(fn (string $state): string =>
-                                        $state === 'No informado' ? 'danger' : 'primary'
-                                    ),
-                                
-                                TextEntry::make('iban_impuestos')                                
-                                    ->label(new HtmlString('<span class="font-semibold">Cuenta bancaria impuestos</span>')) 
-                                    ->copyable()
-                                    ->weight('bold')                         
-                                    ->state(fn ($record) => $record->iban_impuestos ?: 'No informado')
-                                    ->color(fn (string $state): string =>
-                                        $state === 'No informado' ? 'danger' : 'primary'
-                                    ), 
-                                TextEntry::make('ccc')                                
-                                    ->label(new HtmlString('<span class="font-semibold">Codigo CCC</span>'))
-                                    ->copyable()
-                                    ->weight('bold')
-                                    ->state(fn ($record) => $record->ccc ?: 'No informado')
-                                    ->color(fn (string $state): string =>
-                                        $state === 'No informado' ? 'danger' : 'primary'
-                                    ),
-                                ])->columns(1)
-                                ->columnSpan(1),
-                        Tabs\Tab::make('Estado y control')
+                             Tabs\Tab::make('Estado y control')
                             ->schema([
                                 TextEntry::make('estado')                           
                                 ->label('Estado')
@@ -479,6 +457,37 @@ class ClienteResource extends Resource implements HasShieldPermissions
                                 ->color('primary'),
                             ])
                             ->columns(4),
+
+                            Tabs\Tab::make('Datos bancarios')                            
+                                ->schema([
+                                    TextEntry::make('iban_asesorfy')
+                                    ->label(new HtmlString('<span class="font-semibold">Cuenta bancaria cuotas AsesorFy</span>'))                                
+                                    ->copyable()
+                                    ->weight('bold')
+                                    ->state(fn ($record) => $record->iban_asesorfy ?: 'No informado')
+                                    ->color(fn (string $state): string =>
+                                        $state === 'No informado' ? 'danger' : 'primary'
+                                    ),
+                                
+                                TextEntry::make('iban_impuestos')                                
+                                    ->label(new HtmlString('<span class="font-semibold">Cuenta bancaria impuestos</span>')) 
+                                    ->copyable()
+                                    ->weight('bold')                         
+                                    ->state(fn ($record) => $record->iban_impuestos ?: 'No informado')
+                                    ->color(fn (string $state): string =>
+                                        $state === 'No informado' ? 'danger' : 'primary'
+                                    ), 
+                                TextEntry::make('ccc')                                
+                                    ->label(new HtmlString('<span class="font-semibold">Codigo CCC</span>'))
+                                    ->copyable()
+                                    ->weight('bold')
+                                    ->state(fn ($record) => $record->ccc ?: 'No informado')
+                                    ->color(fn (string $state): string =>
+                                        $state === 'No informado' ? 'danger' : 'primary'
+                                    ),
+                                ])->columns(1)
+                                ->columnSpan(1),
+                       
                             
                         Tabs\Tab::make('Observaciones generales cliente')
                             ->schema([
@@ -547,6 +556,22 @@ class ClienteResource extends Resource implements HasShieldPermissions
                 })
                 ->sortable(),
 
+              // Nueva columna para la Tarifa Principal Activa (nombre del servicio)
+             // Columna Modificada para la Tarifa Principal Activa
+            TextColumn::make('tarifa_principal_activa_con_precio') // <--- USA EL NUEVO ACCESOR
+                ->label('Tarifa Principal')
+                ->placeholder('Ninguna')
+                ->badge() // La insignia se aplicará a toda la cadena "FYCA - 75,00 €"
+                ->color('success') // Puedes cambiar el color si lo deseas
+                ->tooltip(function ($record) { // $record es la instancia del modelo Cliente
+                    if ($record->tarifa_principal_activa && $record->tarifa_principal_activa->servicio) {
+                        return $record->tarifa_principal_activa->servicio->nombre;
+                    }
+                    return null; // No mostrar tooltip si no hay servicio
+                })
+                ->searchable(false) // La búsqueda en un accesor así es compleja, mejor deshabilitarla
+                ->sortable(false),
+
             TextColumn::make('provincia')
                 ->label('Provincia')
                 ->sortable(),
@@ -604,10 +629,8 @@ class ClienteResource extends Resource implements HasShieldPermissions
                     'rescindido' => 'Rescindido',
                     'baja' => 'Baja',
                     'requiere_atencion' => 'Requiere atención',
-                ])
-                
+                ])                
                 ->searchable(),
-
             SelectFilter::make('tipo_cliente_id')
                 ->label('Tipo de cliente')
                 ->relationship('tipoCliente', 'nombre')
