@@ -26,6 +26,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Facades\Auth;
+use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 
 class VentaResource extends Resource implements HasShieldPermissions
 {
@@ -33,7 +34,7 @@ class VentaResource extends Resource implements HasShieldPermissions
 
 
     protected static ?string $navigationIcon = 'heroicon-o-currency-dollar'; // O un icono de venta
-    protected static ?string $navigationGroup = 'Gestión LEADS'; // O un grupo propio de Ventas
+    protected static ?string $navigationGroup = 'Gestión VENTAS'; // O un grupo propio de Ventas
    // protected static ?string $navigationLabel = 'Admin Ventas';
     protected static ?string $modelLabel = 'Venta';
     protected static ?string $pluralModelLabel = 'Admin Ventas';
@@ -411,6 +412,42 @@ class VentaResource extends Resource implements HasShieldPermissions
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
+                     ExportBulkAction::make('exportar_completo')
+        ->label('Exportar seleccionados')
+        ->exports([
+            \pxlrbt\FilamentExcel\Exports\ExcelExport::make('ventas')
+                //->fromTable() // usa los registros seleccionados
+                ->withColumns([
+                    \pxlrbt\FilamentExcel\Columns\Column::make('id'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('cliente.razon_social')
+                        ->heading('Cliente'),                   
+                    \pxlrbt\FilamentExcel\Columns\Column::make('lead_id')
+                        ->heading('Lead asociado'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('comercial.full_name')
+                        ->heading('Vendido por'),
+                       
+                    \pxlrbt\FilamentExcel\Columns\Column::make('fecha_venta')
+                        ->heading('Fecha de venta')
+                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('importe_total')
+                        ->heading('Importe total')
+                        ->formatStateUsing(fn ($state) => number_format($state, 2, ',', '.') . ' €'),                       
+                    \pxlrbt\FilamentExcel\Columns\Column::make('observaciones')
+                        ->heading('Observaciones'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('created_at')
+                        ->heading('Creado en App')
+                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('updated_at')
+                        ->heading('Actualizado en App')
+                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
+                ]),
+        ])
+        ->icon('icon-excel2')
+        ->color('success')
+        ->deselectRecordsAfterCompletion()
+        ->requiresConfirmation()
+        ->modalHeading('Exportar Ventas Seleccionadas')
+        ->modalDescription('Exportarás todos los datos de las Ventas seleccionadas.'),
                 ]),
             ]);
     }

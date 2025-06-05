@@ -58,6 +58,7 @@ use Filament\Infolists\Components\ViewEntry;
 use Filament\Infolists\Components\Actions\Action as ActionInfolist;
 use Illuminate\Support\Facades\Log; // Para escribir en el log de Laravel
 use Filament\Forms\Components\ViewField;
+use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 
 
 
@@ -1591,6 +1592,71 @@ protected static function registrarInteraccion(Lead $record, string $campoContad
         ])
         ->bulkActions([ // Acciones Masivas
             Tables\Actions\BulkActionGroup::make([
+                ExportBulkAction::make('exportar_completo')
+        ->label('Exportar seleccionados')
+        ->exports([
+            \pxlrbt\FilamentExcel\Exports\ExcelExport::make('leads')
+                //->fromTable() // usa los registros seleccionados
+                ->withColumns([
+                    \pxlrbt\FilamentExcel\Columns\Column::make('id'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('nombre')
+                       ->heading('Nombre'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('email')
+                        ->heading('Email'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('tfn')
+                        ->heading('Teléfono'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('procedencia.procedencia')
+                        ->heading('Procedencia'),                       
+                    \pxlrbt\FilamentExcel\Columns\Column::make('creador.name')
+                        ->heading('Creador'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('asignado.name')
+                        ->heading('Asignado'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('estado')
+                        ->heading('Estado'),    
+                    \pxlrbt\FilamentExcel\Columns\Column::make('demandado')
+                        ->heading('Demandado'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('fecha_gestion')
+                        ->heading('Fecha de gestión')
+                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('agenda')
+                        ->heading('Agendado')
+                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('fecha_cierre')
+                        ->heading('Fecha de cierre')
+                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('observacion_cierre')
+                        ->heading('Observaciones cierre'),
+                       
+                    \pxlrbt\FilamentExcel\Columns\Column::make('motivoDescarte.motivo')
+                        ->heading('Motivo de descarte'),  
+                    \pxlrbt\FilamentExcel\Columns\Column::make('cliente.nombre')
+                        ->heading('Cliente'),                     
+                    \pxlrbt\FilamentExcel\Columns\Column::make('llamadas')
+                        ->heading('Llamadas'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('emails')
+                        ->heading('Emails'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('chats')
+                        ->heading('Chats'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('otros_acciones')
+                        ->heading('Otras acciones'),                       
+                    \pxlrbt\FilamentExcel\Columns\Column::make('observaciones')
+                        ->heading('Observaciones'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('created_at')
+                        ->heading('Creado en App')
+                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('updated_at')
+                        ->heading('Actualizado en App')
+                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
+
+                        
+                ]),
+        ])
+        ->icon('icon-excel2')
+        ->color('success')
+        ->deselectRecordsAfterCompletion()
+        ->requiresConfirmation()
+        ->modalHeading('Exportar Leads Seleccionados')
+        ->modalDescription('Exportarás todos los datos de los Leads seleccionados.'),
                 Tables\Actions\DeleteBulkAction::make(),
                 // ExportBulkAction::make(), // Si usas exportación
 

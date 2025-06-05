@@ -41,7 +41,7 @@ use Illuminate\Support\HtmlString;
 use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 use Filament\Infolists\Components\Grid;
 use Filament\Infolists\Components\Tabs;
-use pxlrbt\FilamentExcel\Actions\Tables\ExportAction;
+
 
 
 
@@ -734,82 +734,7 @@ class ClienteResource extends Resource implements HasShieldPermissions
               
         ])
         ->bulkActions([
-            // ✅ Exportación personalizada de columnas completas
-    ExportBulkAction::make('exportar_completo')
-        ->label('Exportar seleccionados')
-        ->exports([
-            \pxlrbt\FilamentExcel\Exports\ExcelExport::make('clientes')
-                //->fromTable() // usa los registros seleccionados
-                ->withColumns([
-                    \pxlrbt\FilamentExcel\Columns\Column::make('id'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('tipocliente.nombre')
-                       ->heading('Tipo cliente'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('razon_social')
-                        ->heading('Razón Social'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('dni_cif')
-                        ->heading('DNI o CIF'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('email_contacto')
-                        ->heading('Email'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('telefono_contacto')
-                        ->heading('Teléfono'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('direccion')
-                        ->heading('Dirección'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('codigo_postal')
-                        ->heading('Código Postal'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('localidad')
-                        ->heading('Localidad'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('provincia')
-                        ->heading('Provincia'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('comunidad_autonoma')
-                        ->heading('Comunidad Autónoma'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('estado')
-                        ->heading('Estado'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('fecha_alta')
-                        ->heading('Fecha de Alta')
-                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
-
-                    \pxlrbt\FilamentExcel\Columns\Column::make('fecha_baja')
-                        ->heading('Fecha de Baja')
-                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
-
-                    \pxlrbt\FilamentExcel\Columns\Column::make('iban_asesorfy')
-                        ->heading('IBAN AsesorFy'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('iban_impuestos')
-                        ->heading('IBAN Impuestos'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('ccc')
-                        ->heading('CCC'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('asesor.name')
-                        ->heading('Asesor')
-                        ->getStateUsing(fn ($record) =>
-                            $record->asesor
-                                ? $record->asesor->name
-                                : '⚠️ Sin asignar'
-                        ),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('coordinador.name')
-                        ->heading('Coordinador')
-                        ->getStateUsing(fn ($record) =>
-                            $record->coordinador
-                                ? $record->coordinador->name
-                                : '⚠️ Sin asignar'
-                        ),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('observaciones')
-                        ->heading('Observaciones'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('created_at')
-                        ->heading('Creado en App')
-                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('updated_at')
-                        ->heading('Actualizado en App')
-                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
-
-                        
-                ]),
-        ])
-        ->icon('icon-excel2')
-        ->color('success')
-        ->deselectRecordsAfterCompletion()
-        ->requiresConfirmation()
-        ->modalHeading('Exportar clientes')
-        ->modalDescription('Exportarás todos los datos de clientes seleccionados.'),
+          
 
 //grupo de asignaciones masivas
             BulkActionGroup::make([
@@ -905,8 +830,83 @@ class ClienteResource extends Resource implements HasShieldPermissions
            
             BulkActionGroup::make([
                 Tables\Actions\DeleteBulkAction::make(),
+                ExportBulkAction::make('exportar_completo')
+        ->label('Exportar seleccionados')
+        ->exports([
+            \pxlrbt\FilamentExcel\Exports\ExcelExport::make('clientes')
+                //->fromTable() // usa los registros seleccionados
+                ->withColumns([
+                    \pxlrbt\FilamentExcel\Columns\Column::make('id'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('tipocliente.nombre')
+                       ->heading('Tipo cliente'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('razon_social')
+                        ->heading('Razón Social'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('dni_cif')
+                        ->heading('DNI o CIF'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('email_contacto')
+                        ->heading('Email'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('telefono_contacto')
+                        ->heading('Teléfono'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('direccion')
+                        ->heading('Dirección'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('codigo_postal')
+                        ->heading('Código Postal'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('localidad')
+                        ->heading('Localidad'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('provincia')
+                        ->heading('Provincia'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('comunidad_autonoma')
+                        ->heading('Comunidad Autónoma'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('estado')
+                        ->heading('Estado'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('fecha_alta')
+                        ->heading('Fecha de Alta')
+                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
+
+                    \pxlrbt\FilamentExcel\Columns\Column::make('fecha_baja')
+                        ->heading('Fecha de Baja')
+                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
+
+                    \pxlrbt\FilamentExcel\Columns\Column::make('iban_asesorfy')
+                        ->heading('IBAN AsesorFy'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('iban_impuestos')
+                        ->heading('IBAN Impuestos'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('ccc')
+                        ->heading('CCC'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('asesor.name')
+                        ->heading('Asesor')
+                        ->getStateUsing(fn ($record) =>
+                            $record->asesor
+                                ? $record->asesor->name
+                                : '⚠️ Sin asignar'
+                        ),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('coordinador.name')
+                        ->heading('Coordinador')
+                        ->getStateUsing(fn ($record) =>
+                            $record->coordinador
+                                ? $record->coordinador->name
+                                : '⚠️ Sin asignar'
+                        ),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('observaciones')
+                        ->heading('Observaciones'),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('created_at')
+                        ->heading('Creado en App')
+                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
+                    \pxlrbt\FilamentExcel\Columns\Column::make('updated_at')
+                        ->heading('Actualizado en App')
+                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
+
+                        
+                ]),
+        ])
+        ->icon('icon-excel2')
+        ->color('success')
+        ->deselectRecordsAfterCompletion()
+        ->requiresConfirmation()
+        ->modalHeading('Exportar clientes')
+        ->modalDescription('Exportarás todos los datos de clientes seleccionados.'),
                
-            ])->label('🗑️ Otras acciones'),
+            ])->label('Otras acciones'),
         ]);
     }
 

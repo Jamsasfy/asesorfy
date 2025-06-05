@@ -31,7 +31,7 @@ class ServicioResource extends Resource
     protected static ?string $model = Servicio::class;
 
     protected static ?string $navigationIcon = 'icon-servicios'; // O el icono que prefieras
-    protected static ?string $navigationGroup = 'Gestión LEADS'; // O donde quieras agruparlo
+    protected static ?string $navigationGroup = 'Gestión VENTAS'; // O donde quieras agruparlo
     protected static ?string $modelLabel = 'Servicio';
     protected static ?string $pluralModelLabel = 'Servicios que ofrecemos';
     protected static ?int $navigationSort = 1; // Orden en el menú
