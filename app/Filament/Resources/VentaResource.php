@@ -283,7 +283,34 @@ class VentaResource extends Resource implements HasShieldPermissions
                                     // Esta lógica con visible/required en Repeater items puede ser compleja y requerir 'live' en el Select del Servicio
                                     // Quizás sea mejor dejarlo siempre visible/nullable y añadir una validación simple en el action/hook.
                                     ,
+                                    Section::make('Aplicar Descuento')
+                                    ->description('Opcional: aplica un descuento específico para este servicio.')
+                                    ->collapsible()
+                                    ->collapsed() // Empieza colapsado para no saturar la UI
+                                    ->schema([
+                                        Select::make('descuento_tipo')
+                                            ->label('Tipo de Descuento')
+                                            ->options([
+                                                'porcentaje' => 'Porcentaje (%)',
+                                                'fijo' => 'Cantidad Fija (€)',
+                                                'precio_final' => 'Precio Final (€)',
+                                            ])
+                                            ->nullable(),
 
+                                        TextInput::make('descuento_valor')
+                                            ->label('Valor del Descuento')
+                                            ->numeric()
+                                            ->nullable(),
+                                        
+                                        TextInput::make('descuento_descripcion')
+                                            ->label('Descripción del Descuento')
+                                            ->nullable(),
+
+                                        DatePicker::make('descuento_valido_hasta')
+                                            ->label('Descuento Válido Hasta')
+                                            ->native(false)
+                                            ->nullable(),
+                                    ])->columns(4), // Distribuir los campos de descuento en 4 columnas
 
 
                                 Textarea::make('observaciones_item')

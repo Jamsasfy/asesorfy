@@ -92,6 +92,13 @@ public function lead(): BelongsTo
  {
      return $this->hasMany(Venta::class);
  }
+ /**
+ * Un Cliente puede tener muchas suscripciones.
+ */
+public function suscripciones(): HasMany
+{
+    return $this->hasMany(ClienteSuscripcion::class);
+}
 
 
  //accessor para ver el servicio que tiene activo y su precio
