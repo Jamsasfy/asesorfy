@@ -182,161 +182,264 @@ class VentaResource extends Resource implements HasShieldPermissions
                      ->description('Añade los servicios incluidos en esta venta.')
                      ->schema([
                         // El Repeater se vincula a la relación 'items' (HasMany en modelo Venta)
-                        Repeater::make('items')
-                            ->relationship('items') // <-- Nombre de la relación en el modelo Venta (hasMany VentaItem)
-                            ->schema([
-                                // Campos para cada VentaItem
-                                Select::make('servicio_id')
-                                    ->label('Servicio')
-                                    ->relationship('servicio', 'nombre') // FK a Servicio existente
-                                    ->required()
-                                    ->searchable()
-                                    ->preload()
-                                    ->distinct() // Evita seleccionar el mismo servicio más de una vez en la misma venta
-                                    ->disableOptionsWhenSelectedInSiblingRepeaterItems() // Otra forma de evitar duplicados
-                                    ->live() // Crucial para actualizar precio/subtotal reactivamente
-                                    ->columnSpan(4)
-                                    // --- Lógica para pre-rellenar precio al seleccionar servicio ---
-                                    ->afterStateUpdated(function (Get $get, Set $set, ?int $state) {
-                                        // Si se selecciona un servicio ($state es el ID del servicio)
-                                        if ($state) {
-                                            $servicio = Servicio::find($state);
-                                            if ($servicio) {
-                                                // Establece el precio unitario y recalcula subtotal
-                                                $set('precio_unitario', $servicio->precio_base);
-                                                $cantidad = $get('cantidad') ?? 1; // Usa la cantidad actual o 1 por defecto
-                                                $set('subtotal', $cantidad * $servicio->precio_base);
-                                                 // Si tienes fecha_inicio_servicio en items, podrías setear default aquí si es recurrente
-                                                 // if ($servicio->tipo === 'recurrente') { $set('fecha_inicio_servicio', now()->startOfDay()); }
-                                            } else {
-                                                 // Limpiar campos si no se encuentra el servicio (raro con constrained FK)
-                                                 $set('precio_unitario', 0);
-                                                 $set('subtotal', 0);
-                                            }
-                                        } else {
-                                             // Limpiar campos si se deselecciona el servicio
-                                            $set('precio_unitario', 0);
-                                            $set('subtotal', 0);
-                                        }
-                                    }),
-                                    // *************************************************************
+                        
+
+// En app/Filament/Resources/VentaResource.php
+
+// ... dentro de public static function form(Form $form): Form
+// ... dentro de Section::make('Items de la Venta')->schema([ ...
+
+Repeater::make('items')
+    ->relationship('items')
+    ->schema([
+        // --- FILA 1 DE CAMPOS DEL ITEM ---
+        Select::make('servicio_id')
+            ->label('Servicio')
+            ->relationship('servicio', 'nombre')
+            ->required()
+            ->searchable()
+            ->preload()
+            ->distinct()
+            ->disableOptionsWhenSelectedInSiblingRepeaterItems()
+            ->live()
+            ->columnSpan(2)
+            ->afterStateUpdated(function (Get $get, Set $set, ?int $state) {
+                if ($state && $servicio = Servicio::find($state)) {
+                    $set('precio_unitario', $servicio->precio_base);
+                } else {
+                    $set('precio_unitario', 0);
+                }
+                // Siempre actualizamos todos los totales al cambiar el servicio
+                self::updateTotals($get, $set);
+            }),
+
+        TextInput::make('cantidad')
+            ->label('Cantidad')
+            ->numeric()->type('text')->inputMode('numeric')
+            ->required()
+            ->default(1)
+            ->minValue(1)
+            ->live()
+            ->columnSpan(1) // Ajustado para un mejor layout
+            ->afterStateUpdated(fn (Get $get, Set $set) => self::updateTotals($get, $set)),
+
+        TextInput::make('precio_unitario')
+            ->label('Precio (€)')
+            ->helperText('Sin IVA.')
+            ->numeric()->type('text')->inputMode('decimal') // <-- Sin flechas
+            ->required()
+            ->suffix('€')
+            ->columnSpan(1) // Ajustado
+            ->live()
+            ->afterStateUpdated(fn (Get $get, Set $set) => self::updateTotals($get, $set)),
+
+        TextInput::make('subtotal')
+            ->label('Subtotal (€)')
+            ->helperText('Sin IVA.')
+            ->numeric()->type('text') // <-- Sin flechas
+            ->readOnly()
+            ->suffix('€')
+            ->columnSpan(1), // Ajustado
+         // --- NUEVO CAMPO: SUBTOTAL CON IVA ---
+        TextInput::make('subtotal_con_iva')
+            ->label('Subtotal con IVA')
+            ->numeric()->type('text') // <-- Sin flechas
+            ->readOnly()->suffix('€')
+            ->columnSpan(1),    
+
+        // --- FILA 2 DE CAMPOS DEL ITEM ---
+        DatePicker::make('fecha_inicio_servicio')
+            ->label('Inicio Servicio (si es recurrente)')
+            ->native(false)
+            ->nullable()
+            ->columnSpan(2), // Ocupa un tercio de la fila
+
+        Textarea::make('observaciones_item')
+            ->label('Notas del servicio')
+            ->nullable()
+            ->rows(1)
+            ->columnSpan(4), // Ocupa dos tercios
+
+        // --- SECCIÓN DE DESCUENTOS COMPLETA Y FUNCIONAL ---
+        Section::make('Aplicar Descuento')
+            ->collapsible()
+            ->collapsed()
+            ->schema([
+                Select::make('descuento_tipo')
+                    ->label('Tipo de Descuento')
+                    ->placeholder('Sin descuento') // <-- MEJORA 1: Placeholder más claro
+                    ->options([
+                        'porcentaje' => 'Porcentaje (%)',
+                        'fijo'       => 'Cantidad Fija (€)',
+                        'precio_final' => 'Precio Final (€)',
+                    ])
+                    ->nullable()
+                    ->live()
+                    ->columnSpan(2)
+                    ->afterStateUpdated(function(Get $get, Set $set) {
+                        $set('descuento_valor', null);
+                        self::updateTotals($get, $set);
+                    }),
+
+                TextInput::make('descuento_valor')
+                    ->label('Valor del Descuento')
+                    ->numeric()
+                    ->type('text') // <-- LA SOLUCIÓN: Renderiza como un campo de texto normal, sin flechas.
+                    ->inputMode('decimal') // <-- MEJORA UX: Sugiere el teclado numérico en móviles.
+                    ->nullable()
+                    ->live()
+                     ->columnSpan(2)
+                    ->visible(fn (Get $get) => !empty($get('descuento_tipo')))
+                    ->suffix(fn(Get $get):?string => match($get('descuento_tipo')) {
+                        'porcentaje' => '%',
+                        'fijo', 'precio_final' => '€',
+                        default => null
+                    })
+                    ->helperText(fn(Get $get):?string => match($get('descuento_tipo')) {
+                        'porcentaje' => 'Introduce solo el número del porcentaje (ej: 50).',
+                        'fijo'       => 'Introduce la cantidad fija que se descontará.',
+                        'precio_final' => 'Introduce el precio final que tendrá esta línea.',
+                        default      => null
+                    })
+                    ->afterStateUpdated(fn (Get $get, Set $set) => self::updateTotals($get, $set)),
+
+                TextInput::make('descuento_duracion_meses')
+                    ->label('Duración (meses)')
+                    ->numeric()->type('text')->inputMode('numeric') // <-- Sin flechas
+                    ->nullable()
+                     ->columnSpan(1)
+                    ->live()
+                   ->visible(function (Get $get): bool {
+                        // Debe existir un tipo de descuento Y el servicio debe ser recurrente
+                        if (empty($get('descuento_tipo')) || !$servicioId = $get('servicio_id')) {
+                            return false;
+                        }
+                        return Servicio::find($servicioId)?->tipo?->value === 'recurrente';
+                    })
+                    ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
+                        if (empty($state) || !is_numeric($state)) {
+                            $set('descuento_valido_hasta', null);
+                            return;
+                        }
+                        $fechaInicioBase = $get('fecha_inicio_servicio') ?? $get('../../fecha_venta');
+                        if ($fechaInicioBase) {
+                            $fechaFinDescuento = now()->parse($fechaInicioBase)
+                                                       ->addMonths((int)$state - 1)
+                                                       ->endOfMonth()
+                                                       ->format('Y-m-d');
+                            $set('descuento_valido_hasta', $fechaFinDescuento);
+                        }
+                    }),
+
+                DatePicker::make('descuento_valido_hasta')
+                    ->label('Descuento Válido Hasta')
+                    ->native(false)
+                    ->nullable()
+                    ->readOnly()
+                     ->columnSpan(2)
+                    ->placeholder('Se calcula automáticamente')
+                    ->visible(function (Get $get): bool {
+                        // Misma lógica que el campo de duración
+                        if (empty($get('descuento_tipo')) || !$servicioId = $get('servicio_id')) {
+                            return false;
+                        }
+                        return Servicio::find($servicioId)?->tipo?->value === 'recurrente';
+                    }),
+                    
+                TextInput::make('descuento_descripcion')
+                    ->label('Descripción del Descuento')
+                    ->nullable()
+                     ->columnSpan(3)
+                    ->visible(fn (Get $get) => !empty($get('descuento_tipo'))),
+
+                TextInput::make('precio_final_calculado')
+                    ->label('Precio Final con Dto.')
+                    ->numeric()->type('text') // <-- Sin flechas
+                    ->readOnly()
+                    ->helperText('Sin IVA.')
+                    ->columnSpan(1)
+                    //->prefix('Total:')
+                    ->suffix('€')
+                    ->visible(fn (Get $get) => !empty($get('descuento_tipo'))),
+
+                    // --- NUEVO CAMPO PARA MOSTRAR EL PRECIO CON IVA ---
+                TextInput::make('precio_final_con_iva')
+                    ->label('Total con IVA')
+                    ->numeric()->type('text') // <-- Sin flechas
+                    //->helperText('Precio final con IVA incluido.')
+                    ->readOnly()
+                     ->visible(fn (Get $get) => !empty($get('descuento_tipo')))
+                   // ->prefix('P.V.P:')
+                    ->suffix('€')
+                     ->columnSpan(1),
 
 
-                                TextInput::make('cantidad')
-                                    ->label('Cantidad')
-                                    ->numeric()
-                                    ->required()
-                                    ->default(1)
-                                    ->minValue(1)
-                                    ->live() // Crucial para recalcular subtotal
-                                    ->columnSpan(1)
-                                    // --- Lógica para recalcular subtotal al cambiar cantidad ---
-                                    ->afterStateUpdated(function (Get $get, Set $set) {
-                                        $cantidad = $get('cantidad');
-                                        $precioUnitario = $get('precio_unitario');
-                                        if (is_numeric($cantidad) && is_numeric($precioUnitario)) {
-                                            $set('subtotal', $cantidad * $precioUnitario);
-                                        } else {
-                                            $set('subtotal', 0);
-                                        }
-                                    }),
-                                    // ***********************************************************
+            ])->columns(12)->columnSpanFull(), // La sección de descuento ocupa todo el ancho del item
 
-                                TextInput::make('precio_unitario')
-                                    ->label('Precio (€)')
-                                    ->numeric()
-                                    ->required()
-                                    ->suffix('€')
-                                    ->columnSpan(2)
-                                    // --- Lógica para recalcular subtotal al cambiar precio unitario ---
-                                    ->live() // Crucial para recalcular subtotal
-                                    ->afterStateUpdated(function (Get $get, Set $set) {
-                                        $cantidad = $get('cantidad') ?? 0; // Usa cantidad o 0
-                                        $precioUnitario = $get('precio_unitario');
-                                        if (is_numeric($cantidad) && is_numeric($precioUnitario)) {
-                                            $set('subtotal', $cantidad * $precioUnitario);
-                                        } else {
-                                            $set('subtotal', 0);
-                                        }
-                                    }),
-                                    // *****************************************************************
-
-
-                                TextInput::make('subtotal')
-                                    ->label('Subtotal (€)')
-                                    ->numeric()
-                                    ->readOnly() // No se edita manualmente
-                                  //  ->disabled() // Visualmente deshabilitado
-                                   // ->dehydrated(false) // No se incluye en los datos que se guardan (se calcula al guardar VentaItem)
-                                    ->suffix('€')
-                                    ->columnSpan(2),
-
-                                    DatePicker::make('fecha_inicio_servicio')
-                                    ->label('Inicio Servicio (si recurrente)')
-                                    ->native(false)
-                                    ->nullable()
-                                    ->columnSpan(2)
-                                    // Opcional: Hacer visible/required condicionalmente si el servicio seleccionado es 'recurrente'
-                                    // Requiere lógica en el Repeater y en el modelo VentaItem para acceder al tipo del servicio relacionado
-                                    // ->visible(fn (Get $get) => $get('servicio_id') ? (Servicio::find($get('servicio_id'))?->tipo === 'recurrente') : false)
-                                    // ->required(fn (Get $get) => $get('servicio_id') ? (Servicio::find($get('servicio_id'))?->tipo === 'recurrente') : false)
-                                    // Esta lógica con visible/required en Repeater items puede ser compleja y requerir 'live' en el Select del Servicio
-                                    // Quizás sea mejor dejarlo siempre visible/nullable y añadir una validación simple en el action/hook.
-                                    ,
-                                    Section::make('Aplicar Descuento')
-                                    ->description('Opcional: aplica un descuento específico para este servicio.')
-                                    ->collapsible()
-                                    ->collapsed() // Empieza colapsado para no saturar la UI
-                                    ->schema([
-                                        Select::make('descuento_tipo')
-                                            ->label('Tipo de Descuento')
-                                            ->options([
-                                                'porcentaje' => 'Porcentaje (%)',
-                                                'fijo' => 'Cantidad Fija (€)',
-                                                'precio_final' => 'Precio Final (€)',
-                                            ])
-                                            ->nullable(),
-
-                                        TextInput::make('descuento_valor')
-                                            ->label('Valor del Descuento')
-                                            ->numeric()
-                                            ->nullable(),
-                                        
-                                        TextInput::make('descuento_descripcion')
-                                            ->label('Descripción del Descuento')
-                                            ->nullable(),
-
-                                        DatePicker::make('descuento_valido_hasta')
-                                            ->label('Descuento Válido Hasta')
-                                            ->native(false)
-                                            ->nullable(),
-                                    ])->columns(4), // Distribuir los campos de descuento en 4 columnas
-
-
-                                Textarea::make('observaciones_item')
-                                    ->label('Notas del Item')
-                                    ->nullable()
-                                    ->rows(2)
-                                    ->columnSpan(5), // Ocupa el resto del ancho en la fila de items
-
-                                 // Campo opcional para fecha de inicio de servicio recurrente
-                               
-
-
-                            ])
-                            ->columns(16) // Columnas dentro de cada item del Repeater
-                            ->defaultItems(1) // Empieza con un item vacío por defecto
-                            ->reorderable(true) // Permitir cambiar el orden de los items
-                            ->collapsible() // Permitir colapsar items individuales
-                            ->cloneable() // Permitir duplicar items
-                            ->minItems(1) // O 0 si permites ventas sin items
-                            ->addActionLabel('Añadir Servicio'), // Texto del botón para añadir item
+    ])
+    ->columns(12) // Cada item del repeater se organiza en una rejilla de 12 columnas.
+    ->defaultItems(1)
+    ->reorderable(true)
+    ->collapsible()
+    ->cloneable()
+    ->minItems(1)
+    ->addActionLabel('Añadir Servicio'), // Texto del botón para añadir item
                             ])
                      ->columnSpanFull(), // La sección de items ocupa todo el ancho
 
 
             ]);
     }
+
+ private static function updateTotals(Get $get, Set $set): void
+{
+    // 1. Recalcular el subtotal
+    $cantidad = $get('cantidad') ?? 1;
+    $precioUnitario = $get('precio_unitario') ?? 0;
+    $subtotal = 0;
+    if (is_numeric($cantidad) && is_numeric($precioUnitario)) {
+        // Redondeamos el resultado del subtotal
+        $subtotal = round($cantidad * $precioUnitario, 2);
+    }
+    $set('subtotal', $subtotal);
+
+    // 2. Calcular el Subtotal con IVA
+    $ivaPorcentaje = config('asesorfy.iva_general', 21);
+    // Redondeamos el resultado
+    $subtotalConIva = round($subtotal * (1 + ($ivaPorcentaje / 100)), 2);
+    $set('subtotal_con_iva', $subtotalConIva);
+
+    // 3. Recalcular el precio final con descuento
+    $descuentoTipo = $get('descuento_tipo');
+    $descuentoValor = $get('descuento_valor') ?? 0;
+    $precioFinalConDto = $subtotal;
+
+    if ($descuentoTipo && is_numeric($descuentoValor) && $descuentoValor > 0) {
+        switch ($descuentoTipo) {
+            case 'porcentaje':
+                // Redondeamos el resultado
+                $precioFinalConDto = round($subtotal - ($subtotal * ($descuentoValor / 100)), 2);
+                break;
+            case 'fijo':
+                // Redondeamos el resultado
+                $precioFinalConDto = round($subtotal - $descuentoValor, 2);
+                break;
+            case 'precio_final':
+                // Aquí el valor ya es un precio, asumimos que tiene 2 decimales
+                $precioFinalConDto = round($descuentoValor, 2);
+                break;
+        }
+    }
+    
+    $precioFinalConDto = max(0, $precioFinalConDto);
+    $set('precio_final_calculado', $precioFinalConDto);
+
+    // 4. Calcular y establecer el precio final con IVA y descuentos
+    // Redondeamos el resultado final
+    $precioConIvaYDto = round($precioFinalConDto * (1 + ($ivaPorcentaje / 100)), 2);
+    $set('precio_final_con_iva', $precioConIvaYDto);
+}
+
     public static function table(Table $table): Table
     {
         return $table
