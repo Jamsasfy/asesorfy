@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Enums\ServicioTipoEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Casts\Attribute; // Si usas accessors/mutators
 use App\Models\Cliente;
+use Carbon\Carbon;
 
 class Venta extends Model
 {
@@ -76,18 +78,77 @@ class Venta extends Model
          );
     }
 
-    // --- Hooks para calcular importe_total automáticamente ---
-    // Necesitamos configurar estos hooks en el modelo VentaItem, no aquí.
-    // Los items notificarán a la Venta cuando cambien.
-
+    
      // Método para recalcular y guardar el importe total
-     public function updateTotal(): void
-     {
-         $newTotal = $this->items()->sum('subtotal');
+    public function updateTotal(): void
+    {
+        // <<< AÑADE ESTE DD CRÍTICO
+        // Asegúrate de que la relación 'items' esté cargada antes de sumarla.
+        $this->loadMissing('items'); // Forzar la carga de la relación items
+
+      
+
+        $newTotal = $this->items()->sum('subtotal_aplicado'); // SUMA SUBTOTTAL_APLICADO PARA REFLEJAR DESCUENTOS
      
-         // Esto genera un UPDATE ventas SET importe_total = ?
-         $this->update([
-             'importe_total' => $newTotal,
-         ]);
-     }
+        // Esto genera un UPDATE ventas SET importe_total = ?
+        $this->update([
+            'importe_total' => $newTotal,
+        ]);
+    }
+
+     
+    
+    protected function descuentoMensualRecurrenteTotal(): Attribute
+    {
+        return Attribute::make(
+            get: function () {
+                $totalDescuentoMensual = 0;
+                foreach ($this->items as $item) {
+                    $item->loadMissing('servicio');
+
+                    // SINTAXIS CORRECTA PARA COMPARAR VALOR DE ENUM
+                    // Siempre compara el 'value' del objeto Enum con la cadena literal
+                    if ($item->servicio && $item->servicio->tipo->value === 'recurrente') { 
+                        $subtotalBaseItem = (float)$item->cantidad * (float)($item->precio_unitario ?? 0);
+                        $subtotalAplicadoItem = (float)($item->subtotal_aplicado ?? $item->subtotal);
+                        
+                        if ($subtotalBaseItem <= 0 || $subtotalBaseItem === $subtotalAplicadoItem) {
+                            continue; 
+                        }
+                        $descuentoMontoPorItem = $subtotalBaseItem - $subtotalAplicadoItem;
+                        $totalDescuentoMensual += $descuentoMontoPorItem;
+                    }
+                }
+                return round($totalDescuentoMensual, 2);
+            }
+        );
+    }
+
+    protected function descuentoUnicoTotal(): Attribute
+    {
+        return Attribute::make(
+            get: function () {
+                $totalDescuentoUnico = 0;
+                foreach ($this->items as $item) {
+                    $item->loadMissing('servicio');
+
+                    // SINTAXIS CORRECTA PARA COMPARAR VALOR DE ENUM
+                    if ($item->servicio && $item->servicio->tipo->value === 'unico') { 
+                        $subtotalBaseItem = (float)$item->cantidad * (float)($item->precio_unitario ?? 0);
+                        $subtotalAplicadoItem = (float)($item->subtotal_aplicado ?? $item->subtotal);
+                        
+                        if ($subtotalBaseItem <= 0 || $subtotalBaseItem === $subtotalAplicadoItem) {
+                            continue; 
+                        }
+                        $descuentoMontoPorItem = $subtotalBaseItem - $subtotalAplicadoItem;
+                        $totalDescuentoUnico += $descuentoMontoPorItem;
+                    }
+                }
+                return round($totalDescuentoUnico, 2);
+            }
+        );
+    }
+    
+    
+   
 }

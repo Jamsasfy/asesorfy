@@ -17,26 +17,19 @@ class EditVenta extends EditRecord
     {
         return $this->getResource()::getUrl('index');
     }
- // Se ejecuta después de que el formulario se ha llenado con los datos del registro existente
-    protected function afterFill(): void
+
+    
+
+ // Tu método afterSave() que recalcula el total y lo guarda en la DB después de actualizar
+    protected function afterSave(): void
     {
-        // Solo recalculamos si los totales vienen vacíos en el modelo
-        if (blank($this->record->importe_total)) {
-            $this->record->updateTotal();
-            // Refrescamos el formulario con los nuevos valores
-            $this->form->fill([
-                'importe_total'          => $this->record->importe_total,
-                'importe_total_sin_iva'  => $this->record->importe_total_sin_iva,
-            ]);
+        if ($this->record) {
+            $this->record->updateTotal(); // Asumiendo que este método existe en tu modelo Venta
         }
     }
 
-    protected function afterSave(): void
-    {
-        $this->record?->updateTotal();
-    }
 
-    
+   
 
     protected function getHeaderActions(): array
     {
