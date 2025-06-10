@@ -5,6 +5,9 @@ namespace App\Filament\Resources\VentaResource\Pages;
 use App\Filament\Resources\VentaResource;
 use Filament\Actions;
 use Filament\Resources\Pages\CreateRecord;
+use Filament\Forms\Get; // Asegúrate de importar Get y Set
+use Filament\Forms\Set;
+use App\Models\Venta;
 
 class CreateVenta extends CreateRecord
 {
@@ -15,15 +18,15 @@ class CreateVenta extends CreateRecord
     {
         return $this->getResource()::getUrl('index');
     }
-
+   
 
     protected function afterCreate(): void
     {
-       
-
-        // Recalcula y guarda el importe total tras crear la venta y sus items:
-        $this->record->updateTotal();
+        if ($this->record) {
+            $this->record->updateTotal();
+        }
     }
 
+   
 
 }
