@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany; // Para comentarios morfológicos
 use Illuminate\Database\Eloquent\SoftDeletes; // Para borrado suave
 use App\Enums\ProyectoEstadoEnum; // Si defines un Enum para los estados del proyecto
+use Illuminate\Database\Eloquent\Casts\Attribute; // Asegúrate de importar Attribute
+
 
 class Proyecto extends Model
 {
@@ -22,18 +24,30 @@ class Proyecto extends Model
         'venta_item_id', // Si vinculas al VentaItem específico
         'user_id', // Asesor asignado
         'estado',
-        'fecha_inicio_estimada',
-        'fecha_fin_estimada',
+        'agenda',
         'fecha_finalizacion',
         'descripcion',
+         'llamadas',
+        'emails',
+        'chats',
+        'otros_acciones',
     ];
 
     protected $casts = [
-        'fecha_inicio_estimada' => 'date',
-        'fecha_fin_estimada' => 'date',
+        'agenda' => 'datetime',
         'fecha_finalizacion' => 'datetime', // 'datetime' para guardar hora también
         'estado' => ProyectoEstadoEnum::class, // Si usas un Enum para estados
+         'llamadas' => 'integer',
+        'emails' => 'integer',
+        'chats' => 'integer',
+        'otros_acciones' => 'integer',
     ];
+
+    protected $attributes = [
+    'agenda' => null,
+];
+
+
 
     // --- Relaciones ---
     public function cliente(): BelongsTo
@@ -62,9 +76,15 @@ class Proyecto extends Model
     }
 
     // --- Relación Morfológica con Comentarios ---
-    public function comentarios(): MorphMany
+     public function comentarios(): MorphMany
+{
+    return $this->morphMany(Comentario::class, 'comentable')->latest();
+}
+     protected function totalInteracciones(): Attribute
     {
-        return $this->morphMany(Comentario::class, 'comentable');
+        return Attribute::make(
+            get: fn () => $this->llamadas + $this->emails + $this->chats + $this->otros_acciones,
+        );
     }
 
     // --- Hooks --- 
