@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ClienteSuscripcionEstadoEnum;
 use App\Enums\ProyectoEstadoEnum;
 use App\Enums\ServicioTipoEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -63,7 +64,7 @@ class Venta extends Model
     {
         return $this->hasMany(Proyecto::class);
     }
-
+ 
 
     // Opcional: Accessor para obtener el tipo de venta (puntual, recurrente, mixta)
     // basado en los tipos de servicios de sus items.
@@ -198,7 +199,6 @@ class Venta extends Model
             }
         );
     }
-    
-    
+   
    
 }
