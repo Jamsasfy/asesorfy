@@ -25,6 +25,8 @@ class Servicio extends Model
         'precio_base',
         'activo',
         'es_tarifa_principal', // Este campo es opcional, solo si lo necesitas
+        'requiere_proyecto_activacion', // <<< AÑADIDO
+
     ];
 
     /**
@@ -39,6 +41,8 @@ class Servicio extends Model
         'activo' => 'boolean',
         // Castear 'precio_base' a decimal con 2 decimales (opcional pero bueno para consistencia)
         'precio_base' => 'decimal:2',
+       'requiere_proyecto_activacion' => 'boolean', // <<< AÑADIDO
+
     ];
 
 

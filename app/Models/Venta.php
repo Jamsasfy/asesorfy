@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ProyectoEstadoEnum;
 use App\Enums\ServicioTipoEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -57,6 +58,13 @@ class Venta extends Model
         return $this->hasMany(VentaItem::class);
     }
 
+     // Relación de Venta con Proyectos (nueva)
+    public function proyectos(): HasMany
+    {
+        return $this->hasMany(Proyecto::class);
+    }
+
+
     // Opcional: Accessor para obtener el tipo de venta (puntual, recurrente, mixta)
     // basado en los tipos de servicios de sus items.
     // Esto demuestra cómo obtener la información sin tener la columna 'tipo_venta'.
@@ -78,22 +86,64 @@ class Venta extends Model
          );
     }
 
-    
-     // Método para recalcular y guardar el importe total
-    public function updateTotal(): void
+     /**
+     * Método para recalcular y guardar el importe total en la Venta
+     * y para crear los Proyectos de activación asociados.
+     */
+   public function updateTotal(): void
     {
-        // <<< AÑADE ESTE DD CRÍTICO
-        // Asegúrate de que la relación 'items' esté cargada antes de sumarla.
-        $this->loadMissing('items'); // Forzar la carga de la relación items
+        // === 1. Calcular y guardar el importe total de la Venta (CON DESCUENTO, SIN IVA) ===
+        $this->loadMissing('items'); // Asegura que la relación 'items' esté cargada
+        $newTotal = $this->items->sum(function($item) {
+            // Suma 'subtotal_aplicado' (que ya incluye el descuento y es sin IVA)
+            return (float)($item->subtotal_aplicado ?? $item->subtotal ?? 0); 
+        });
+        $this->importe_total = $newTotal;
+        $this->save(); // Guarda el modelo Venta con el nuevo total
 
-      
+        // === 2. Crear/Actualizar Proyectos de Activación (Para ítems que los requieran) ===
+        $this->items->each(function($item) {
+            // Precargar el servicio para acceder a su tipo y si requiere proyecto.
+            $item->loadMissing('servicio');
 
-        $newTotal = $this->items()->sum('subtotal_aplicado'); // SUMA SUBTOTTAL_APLICADO PARA REFLEJAR DESCUENTOS
-     
-        // Esto genera un UPDATE ventas SET importe_total = ?
-        $this->update([
-            'importe_total' => $newTotal,
-        ]);
+            // Solo si el item tiene un servicio que 'requiere_proyecto_activacion'
+            // Este servicio es el que DISPARA la creación de un proyecto (generalmente de tipo ÚNICO)
+            if ($item->servicio && $item->servicio->requiere_proyecto_activacion) { 
+                // updateOrCreate para crear el proyecto si no existe o actualizarlo si ya existe
+                $proyecto = Proyecto::updateOrCreate(
+                    ['venta_item_id' => $item->id], // Clave única para encontrar el proyecto
+                    [
+                        'nombre' => $item->servicio->nombre,
+                        'cliente_id' => $this->cliente_id,
+                        'venta_id' => $this->id, // Vincular a esta venta
+                        'servicio_id' => $item->servicio_id, // Vincular al servicio proyectable
+                        'user_id' => null, // Asignar al comercial de la venta por defecto
+                        'estado' => ProyectoEstadoEnum::Pendiente->value, // Estado inicial del proyecto
+                        'descripcion' => "Proyecto generado por la venta {$this->id} para el servicio '{$item->servicio->nombre}'.",
+                        // Otros campos del proyecto (fechas estimadas, etc.) si los tienes
+                    ]
+                );
+            }
+        });
+
+        // Este método checkAndActivateSubscriptions() estará VACÍO POR AHORA, pero existe.
+        // Lo rellenaremos cuando estemos listos para la activación de suscripciones.
+        // La llamada a this->checkAndActivateSubscriptions() se añade en el hook 'updated' del modelo Proyecto.
+    }
+
+    /**
+     * Este método es llamado por el modelo Proyecto cuando se finaliza.
+     * Por ahora, lo dejamos vacío. Más adelante, contendrá la lógica
+     * para verificar los proyectos de esta venta y activar las suscripciones.
+     */
+    public function checkAndActivateSubscriptions(): void
+    {
+        // dd('checkAndActivateSubscriptions llamado, pero está vacío por ahora'); // DEBUGGING
+        // Aquí irá la lógica para:
+        // 1. Cargar todos los proyectos de activación vinculados a esta venta.
+        // 2. Verificar si TODOS están finalizados.
+        // 3. Si es así, activar las ClienteSuscripciones pendientes asociadas a esta venta.
+        // 4. Actualizar el estado del Cliente si es necesario.
     }
 
      

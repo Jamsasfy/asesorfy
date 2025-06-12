@@ -29,7 +29,8 @@ use Illuminate\Support\Facades\Auth;
 use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 use App\Services\ConfiguracionService; // ¡Añade esta línea!
 use App\Enums\ServicioTipoEnum; // <-- Esta es la línea que debe estar aquí
-
+use Filament\Tables\Enums\FiltersLayout;
+use Malzariey\FilamentDaterangepickerFilter\Filters\DateRangeFilter;
 
 class VentaResource extends Resource implements HasShieldPermissions
 {
@@ -553,8 +554,65 @@ public static function form(Form $form): Form
                    
             ])
             ->filters([
-                //
-            ])
+                 Tables\Filters\SelectFilter::make('cliente_id')
+                    ->relationship('cliente', 'razon_social')
+                    ->searchable()
+                    ->preload()
+                    ->label('Filtrar por Cliente'),
+
+              Tables\Filters\SelectFilter::make('user_id')
+                    ->relationship('comercial', 'name', fn (Builder $query) => 
+                        // Filtra para mostrar usuarios con el rol 'comercial' O 'super_admin'
+                        $query->whereHas('roles', fn (Builder $query) => 
+                            $query->where('name', 'comercial')
+                                  ->orWhere('name', 'super_admin') // <<< CAMBIO AQUI: Añadir super_admin
+                        )
+                    )
+                    ->searchable()
+                    ->preload()
+                    ->label('Filtrar por Comercial'),
+
+                // Filtro por Tipo de Servicio (Único/Recurrente)
+                Tables\Filters\SelectFilter::make('tipo_servicio')
+                    ->options([
+                        'unico'      => 'Servicio Único',    // Usa la cadena literal 'unico'
+                        'recurrente' => 'Servicio Recurrente', // Usa la cadena literal 'recurrente'
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        // Este filtro necesita un join con venta_items y servicios
+                        if (isset($data['value']) && filled($data['value'])) {
+                            $query->whereHas('items', function (Builder $query) use ($data) {
+                                $query->whereHas('servicio', function (Builder $query) use ($data) {
+                                    $query->where('tipo', $data['value']);
+                                });
+                            });
+                        }
+                        return $query;
+                    })
+                    ->label('Filtrar por Tipo de Servicio'),
+
+                // Filtro por Rango de Fechas de Venta
+                DateRangeFilter::make('fecha_venta')
+                    
+                   
+                    ->label('Filtrar por Fecha de Venta'),
+
+                // Filtro por si tiene Descuento (cualquier tipo)
+                Tables\Filters\Filter::make('con_descuento')
+                    ->query(function (Builder $query): Builder {
+                        // Filtra ventas que tengan al menos un item con descuento
+                        return $query->whereHas('items', function (Builder $query) {
+                            $query->where(function (Builder $query) {
+                                // Donde descuento_tipo NO es nulo Y descuento_valor es mayor que 0
+                                $query->whereNotNull('descuento_tipo')
+                                      ->where('descuento_valor', '>', 0);
+                            });
+                        });
+                    })
+                    ->toggle() // Se activa/desactiva con un switch
+                    ->label('Mostrar con Descuento'),
+            ],layout: FiltersLayout::AboveContent)
+                ->filtersFormColumns(7)
             ->actions([
                 Tables\Actions\EditAction::make(),
             ])
@@ -567,28 +625,87 @@ public static function form(Form $form): Form
             \pxlrbt\FilamentExcel\Exports\ExcelExport::make('ventas')
                 //->fromTable() // usa los registros seleccionados
                 ->withColumns([
-                    \pxlrbt\FilamentExcel\Columns\Column::make('id'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('cliente.razon_social')
-                        ->heading('Cliente'),                   
-                    \pxlrbt\FilamentExcel\Columns\Column::make('lead_id')
-                        ->heading('Lead asociado'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('comercial.full_name')
-                        ->heading('Vendido por'),
-                       
-                    \pxlrbt\FilamentExcel\Columns\Column::make('fecha_venta')
-                        ->heading('Fecha de venta')
-                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('importe_total')
-                        ->heading('Importe total')
-                        ->formatStateUsing(fn ($state) => number_format($state, 2, ',', '.') . ' €'),                       
-                    \pxlrbt\FilamentExcel\Columns\Column::make('observaciones')
-                        ->heading('Observaciones'),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('created_at')
-                        ->heading('Creado en App')
-                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('updated_at')
-                        ->heading('Actualizado en App')
-                        ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y - H:i')),
+                   // Columnas ya existentes
+                                \pxlrbt\FilamentExcel\Columns\Column::make('id')
+                                    ->heading('ID Venta'), // Etiqueta más clara
+                                \pxlrbt\FilamentExcel\Columns\Column::make('cliente.razon_social')
+                                    ->heading('Cliente'),
+                                \pxlrbt\FilamentExcel\Columns\Column::make('lead.id') // Usar lead.nombre para el nombre del Lead
+                                    ->heading('Lead Asociado')
+                                    ->formatStateUsing(fn ($state, $record) => $record->lead ? $record->lead->nombre : ''), // Asegura que solo muestre el nombre si existe
+                                \pxlrbt\FilamentExcel\Columns\Column::make('comercial.full_name')
+                                    ->heading('Vendido por'),
+                                
+                                \pxlrbt\FilamentExcel\Columns\Column::make('fecha_venta')
+                                    ->heading('Fecha de venta')
+                                    ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y H:i')), // Formato para Excel
+                                
+                             // IMPORTE RECURRENTE (USANDO LA LÓGICA DE LA COLUMNA DE LA TABLA)
+                                    \pxlrbt\FilamentExcel\Columns\Column::make('importe_recurrente')
+                                        ->heading('Importe Recurrente')
+                                        // <<< CAMBIO AQUI: Usar la cadena literal 'recurrente'
+                                        ->getStateUsing(function (Venta $record): float {
+                                            $totalRec = VentaItem::query()
+                                                ->where('venta_id', $record->id)
+                                                ->whereHas('servicio', fn (Builder $q) => $q->where('tipo', 'recurrente'))
+                                                ->sum('subtotal_aplicado'); // Suma subtotal_aplicado para el valor con descuento
+                                            return (float) $totalRec;
+                                        })
+                                        ->formatStateUsing(fn ($state) => number_format($state, 2, ',', '.') . ' €'),
+                                    
+                                    // IMPORTE ÚNICO (USANDO LA LÓGICA DE LA COLUMNA DE LA TABLA)
+                                    \pxlrbt\FilamentExcel\Columns\Column::make('importe_unico')
+                                        ->heading('Importe Único')
+                                        // <<< CAMBIO AQUI: Usar la cadena literal 'unico'
+                                        ->getStateUsing(function (Venta $record): float {
+                                            $totalUnico = VentaItem::query()
+                                                ->where('venta_id', $record->id)
+                                                ->whereHas('servicio', fn (Builder $q) => $q->where('tipo', 'unico'))
+                                                ->sum('subtotal_aplicado'); // Suma subtotal_aplicado para el valor con descuento
+                                            return (float) $totalUnico;
+                                        })
+                                        ->formatStateUsing(fn ($state) => number_format($state, 2, ',', '.') . ' €'),
+                                    
+                                    
+                                
+                                // DESCUENTO MENSUAL RECURRENTE (CORRECCIÓN EN formatStateUsing)
+                                \pxlrbt\FilamentExcel\Columns\Column::make('descuento_mensual_recurrente_total')
+                                    ->heading('Descuento Mensual Rec.')
+                                    ->formatStateUsing(function ($state, $record) {
+                                        if ((float)$state > 0) {
+                                            $duracionTexto = '';
+                                            // <<< CORRECCIÓN AQUI: Acceso al valor del Enum directamente como cadena
+                                            $recurrente_value = 'recurrente'; // Definir la cadena literal aquí
+                                            foreach ($record->items as $item) {
+                                                $item->loadMissing('servicio');
+                                                if ($item->servicio && $item->servicio->tipo->value === $recurrente_value && !empty($item->descuento_duracion_meses) && (float)$item->descuento_valor > 0) {
+                                                    $duracionTexto = " ({$item->descuento_duracion_meses} meses)";
+                                                    break;
+                                                }
+                                            }
+                                            return '-' . number_format($state, 2, ',', '.') . ' €/mes' . $duracionTexto;
+                                        }
+                                        return 'Sin Dto.';
+                                    }),
+                                
+                                // DESCUENTO ÚNICO (CORRECCIÓN EN formatStateUsing)
+                                \pxlrbt\FilamentExcel\Columns\Column::make('descuento_unico_total')
+                                    ->heading('Descuento Único')
+                                    ->formatStateUsing(fn ($state) => ((float)$state > 0) ? '-' . number_format($state, 2, ',', '.') . ' €' : 'Sin Dto.'),
+                                // FIN AÑADIDO
+
+                                // Importe Total (asumo que este es el total final con IVA)
+                                \pxlrbt\FilamentExcel\Columns\Column::make('importe_total')
+                                    ->heading('Importe Total Final') // Etiqueta más clara
+                                    ->formatStateUsing(fn ($state) => number_format($state, 2, ',', '.') . ' €'),
+                                
+                                \pxlrbt\FilamentExcel\Columns\Column::make('observaciones')
+                                    ->heading('Observaciones'),
+                                \pxlrbt\FilamentExcel\Columns\Column::make('created_at')
+                                    ->heading('Creado en App')
+                                    ->formatStateUsing(fn ($state) => \Carbon\Carbon::parse($state)->format('d/m/Y H:i')),
+                                \pxlrbt\FilamentExcel\Columns\Column::make('updated_at')
+                                    ->heading('Actualizado en App')
                 ]),
         ])
         ->icon('icon-excel2')

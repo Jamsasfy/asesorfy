@@ -74,7 +74,12 @@ class ServicioResource extends Resource
                             ->default(true)
                             ->label('¿Es tarifa principal?')
                             ->helperText('Si es tarifa principal, se usará como tarifa por defecto para este servicio.')
-                            ->columnSpan(1),    
+                            ->columnSpan(1),   
+                            // <<< AÑADIDO: Toggle para requiere_proyecto_activacion
+                        Toggle::make('requiere_proyecto_activacion')
+                            ->label('Requiere Proyecto de Activación')
+                            ->helperText('Activar si este servicio recurrente inicia un proyecto de activación (ej. alta de autónomo).')
+                            ->columnSpan(1), 
 
                         Textarea::make('descripcion')
                             ->maxLength(65535)
@@ -107,7 +112,13 @@ class ServicioResource extends Resource
                 IconColumn::make('es_tarifa_principal') // Columna de icono para booleano
                 ->label('¿Es tarifa principal?')
                     ->boolean()
-                    ->sortable(),     
+                    ->sortable(),    
+//requiere_proyecto_activacion
+            IconColumn::make('requiere_proyecto_activacion') // Columna de icono para booleano
+                ->label('Proyecto asiociado')
+                    ->boolean()
+                    ->sortable(), 
+
                 // Opcional: ToggleColumn para cambiar activo/inactivo desde la tabla
                 // ToggleColumn::make('activo'),
                 TextColumn::make('created_at')

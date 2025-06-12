@@ -34,11 +34,12 @@ public function getHeading(): string
         $user = Auth::user();
         $year = now()->year;
 
-        $ventaItemsQuery = VentaItem::query() // Empezamos la consulta con VentaItem
-            ->selectRaw('MONTH(v.fecha_venta) as month, s.tipo, SUM(vi.subtotal) as total')
-            ->from('venta_items as vi') // Alias para venta_items
-            ->join('ventas as v', 'vi.venta_id', '=', 'v.id') // Join con la tabla ventas (alias v)
-            ->join('servicios as s', 'vi.servicio_id', '=', 's.id') // Join con la tabla servicios (alias s)
+        $ventaItemsQuery = VentaItem::query()
+            // <<< CAMBIO AQUI: Sumar subtotal_aplicado para que sea SIN IVA (pero CON descuento)
+            ->selectRaw('MONTH(v.fecha_venta) as month, s.tipo, SUM(vi.subtotal_aplicado) as total')
+            ->from('venta_items as vi')
+            ->join('ventas as v', 'vi.venta_id', '=', 'v.id')
+            ->join('servicios as s', 'vi.servicio_id', '=', 's.id')
             ->whereYear('v.fecha_venta', $year);
 
         if ($user && $user->hasRole('comercial')) {
