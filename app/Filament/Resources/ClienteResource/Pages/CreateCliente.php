@@ -23,7 +23,7 @@ class CreateCliente extends CreateRecord
 
     protected function afterCreate(): void
     {
-        parent::afterCreate();
+       // parent::afterCreate();
 
         $leadId = request()->query('lead_id');
         if ($leadId) {

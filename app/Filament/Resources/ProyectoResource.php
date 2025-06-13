@@ -40,6 +40,8 @@ use Filament\Forms\Set; // <<< ASEGÚRATE DE QUE ESTA LÍNEA ESTÉ AQUÍ
 use Filament\Support\Enums\Alignment;
 use Illuminate\Support\Facades\Log; // Para Log::error
 use Filament\Forms\Components\Toggle; // Para el Toggle en los formularios de las acciones
+use Illuminate\Database\Eloquent\Model;
+
 
 
 
@@ -182,6 +184,10 @@ class ProyectoResource extends Resource implements HasShieldPermissions
     public static function table(Table $table): Table
     {
         return $table
+       //  ->striped()
+        ->recordUrl(null)   
+        ->defaultSort('created_at', 'desc') // Ordenar por defecto
+       
             ->columns([
                 TextColumn::make('nombre')
                     ->label('Proyecto')
@@ -278,6 +284,7 @@ class ProyectoResource extends Resource implements HasShieldPermissions
                     ->toggleable(isToggledHiddenByDefault: false),
 
             ])
+            
             ->filters([
                 // Filtro por Cliente
                 Tables\Filters\SelectFilter::make('cliente_id')
