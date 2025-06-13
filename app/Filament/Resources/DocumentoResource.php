@@ -219,7 +219,44 @@ class DocumentoResource extends Resource implements HasShieldPermissions
 )
         ->searchable()
         ->preload()
-        ->required(),
+        ->required()
+            ->reactive(),
+
+
+        Select::make('documentable_type')
+                ->label('¿A qué va asociado?')
+                ->options([
+                    'App\Models\Cliente' => 'Cliente',
+                    'App\Models\Proyecto' => 'Proyecto',
+                ])
+                ->required()
+                ->reactive(),
+
+
+            // 2️⃣ Selecciona el registro concreto del modelo elegido
+            Select::make('documentable_id')
+            ->label('Selecciona el registro')
+            ->required()
+            ->searchable()
+            ->options(function (callable $get) {
+                $type = $get('documentable_type');
+                $clienteId = $get('cliente_id');
+
+                if ($type === 'App\Models\Cliente' && $clienteId) {
+                    // Solo deja elegir el cliente seleccionado
+                    $cliente = \App\Models\Cliente::find($clienteId);
+                    return $cliente ? [$cliente->id => $cliente->razon_social] : [];
+                }
+                if ($type === 'App\Models\Proyecto' && $clienteId) {
+                    // Filtra proyectos SOLO de ese cliente
+                    return \App\Models\Proyecto::where('cliente_id', $clienteId)
+                        ->pluck('nombre', 'id');
+                }
+                return [];
+            })
+            ->visible(fn (callable $get) => filled($get('documentable_type')))
+            ->helperText('Primero selecciona cliente y después el tipo de asociación.'),
+
     ]);
     }
 
@@ -631,6 +668,13 @@ class DocumentoResource extends Resource implements HasShieldPermissions
                     'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'Word (docx)',
                     'application/vnd.ms-excel' => 'Excel (xls)',
                     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'Excel (xlsx)',
+                ]),
+
+                SelectFilter::make('documentable_type')
+                ->label('Tipo de asociado')
+                ->options([
+                    'App\Models\Cliente' => 'Cliente',
+                    'App\Models\Proyecto' => 'Proyecto',
                 ]),
                // ->native(false),     
             DateRangeFilter::make('created_at')

@@ -41,4 +41,8 @@ class Documento extends Model
       {
           return $this->belongsTo(Cliente::class);
       }
+      public function documentable()
+        {
+            return $this->morphTo();
+        }
 }

@@ -99,6 +99,10 @@ public function suscripciones(): HasMany
 {
     return $this->hasMany(ClienteSuscripcion::class);
 }
+public function documentosPolimorficos()
+{
+    return $this->morphMany(\App\Models\Documento::class, 'documentable');
+}
 
 
  //accessor para ver el servicio que tiene activo y su precio

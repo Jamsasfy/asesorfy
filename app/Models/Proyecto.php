@@ -87,6 +87,14 @@ class Proyecto extends Model
         );
     }
 
+    // app/Models/Proyecto.php
+
+        public function documentosPolimorficos()
+        {
+            return $this->morphMany(\App\Models\Documento::class, 'documentable');
+        }
+
+
     // --- Hooks --- 
     protected static function booted(): void
     {

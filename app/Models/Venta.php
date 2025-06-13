@@ -114,7 +114,11 @@ class Venta extends Model
                 $proyecto = Proyecto::updateOrCreate(
                     ['venta_item_id' => $item->id], // Clave única para encontrar el proyecto
                     [
-                        'nombre' => $item->servicio->nombre,
+                        'nombre' => sprintf(
+                            '%s (%s)',
+                            $item->servicio->nombre,
+                            $this->cliente->dni_cif ?? '-'
+                        ),
                         'cliente_id' => $this->cliente_id,
                         'venta_id' => $this->id, // Vincular a esta venta
                         'servicio_id' => $item->servicio_id, // Vincular al servicio proyectable

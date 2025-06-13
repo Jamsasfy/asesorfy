@@ -919,7 +919,8 @@ class ProyectoResource extends Resource implements HasShieldPermissions
     {
         return [
             // Aquí vamos a añadir el RelationManager para comentarios
-            // RelationManagers\ComentariosRelationManager::class, // Lo crearemos en el siguiente paso
+                  RelationManagers\DocumentosRelationManager::class,
+
         ];
     }
 

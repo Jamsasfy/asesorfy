@@ -25,7 +25,8 @@ use Malzariey\FilamentDaterangepickerFilter\Filters\DateRangeFilter;
 
 class DocumentosRelationManager extends RelationManager
 {
-    protected static string $relationship = 'Documentos';
+    protected static string $relationship = 'documentos';
+    protected static ?string $title = 'Documentos';
 
     // QUITA el “static” y asegúrate de no ponerle parámetros
     public function isReadOnly(): bool
@@ -34,6 +35,23 @@ class DocumentosRelationManager extends RelationManager
     }
 
 
+/* public function tableQuery()
+{
+    $cliente = $this->getOwnerRecord();
+    $proyectosIds = $cliente->proyectos()->pluck('id');
+
+    return \App\Models\Documento::query()
+        ->where(function ($q) use ($cliente, $proyectosIds) {
+            $q->where(function ($q2) use ($cliente) {
+                $q2->where('documentable_type', 'App\Models\Cliente')
+                   ->where('documentable_id', $cliente->id);
+            })
+            ->orWhere(function ($q2) use ($proyectosIds) {
+                $q2->where('documentable_type', 'App\Models\Proyecto')
+                   ->whereIn('documentable_id', $proyectosIds);
+            });
+        });
+} */
 
     public function form(Form $form): Form
     {
@@ -222,6 +240,12 @@ class DocumentosRelationManager extends RelationManager
             ])
             ->defaultSort('created_at', 'desc')
             ->filters([
+                   SelectFilter::make('documentable_type')
+                ->label('Tipo de asociado')
+                ->options([
+                    'App\Models\Cliente' => 'Cliente',
+                    'App\Models\Proyecto' => 'Proyecto',
+                ]),
                 SelectFilter::make('tipo_documento_id')
                 ->label('Tipo')
                 ->relationship('tipo', 'nombre'),
