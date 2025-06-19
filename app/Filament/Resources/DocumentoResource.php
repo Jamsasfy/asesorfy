@@ -349,7 +349,7 @@ class DocumentoResource extends Resource implements HasShieldPermissions
 
                             if ($tipo === 'Trabajador') {
                                 $roles = $user->roles->pluck('name')->implode(', ');
-                                return "{$nombre} (Trabajador: {$roles})";
+                                return "{$nombre} ({$roles})";
                             }
 
                             return "{$nombre} ({$tipo})";
@@ -480,7 +480,7 @@ class DocumentoResource extends Resource implements HasShieldPermissions
 
                     if ($tipo === 'Trabajador') {
                         $roles = $user->roles->pluck('name')->implode(', ');
-                        return "{$nombre} (Trabajador: {$roles})";
+                        return "{$nombre} ({$roles})";
                     }
 
                     return "{$nombre} ({$tipo})";

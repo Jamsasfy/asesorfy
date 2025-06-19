@@ -936,9 +936,11 @@ class ClienteResource extends Resource implements HasShieldPermissions
     public static function getRelations(): array
 {
     return [
-       Clienteresource\RelationManagers\UsuariosRelationManager::class,
+        Clienteresource\RelationManagers\ComentariosRelationManager::class,
        Clienteresource\RelationManagers\DocumentosRelationManager::class,
-         Clienteresource\RelationManagers\ComentariosRelationManager::class,
+       Clienteresource\RelationManagers\UsuariosRelationManager::class,
+
+         
       
         // Puedes añadir más relation managers aquí si es necesario
     ];

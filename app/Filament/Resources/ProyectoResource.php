@@ -882,17 +882,18 @@ class ProyectoResource extends Resource implements HasShieldPermissions
                             $contenido = $record->contenido;
                             $fecha = $record->created_at?->format('d/m/Y H:i') ?? '';
                         
-                            return '
+                      return '
                                     <div style="
                                         display: flex;
                                         align-items: center;
                                         gap: 1rem;
-                                        background-color: #dcfce7;
-                                        color: #1f2937;
-                                        padding: 0.75rem 1rem;
+                                        background-color: #e0f2fe;
+                                        color: #1e3a8a;
+                                        padding: 0.5rem 0.75rem;
                                         border-radius: 1rem;
+                                        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
                                         margin: 0.5rem 0;
-                                        font-size: 0.95rem;
+                                        font-size: 0.9rem;
                                         line-height: 1.4;
                                         flex-wrap: wrap;
                                     ">
@@ -901,6 +902,8 @@ class ProyectoResource extends Resource implements HasShieldPermissions
                                         <span style="font-size: 0.8rem; color: #6b7280;">🕓 ' . e($fecha) . '</span>
                                     </div>
                                 ';
+
+
                         })
                 ])
                 //->columnSpanFull()
