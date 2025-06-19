@@ -260,15 +260,17 @@ class ProyectoResource extends Resource implements HasShieldPermissions
                     ->searchable()
                     ->sortable(),
 
-                TextColumn::make('estado')
+               TextColumn::make('estado')
                     ->label('Estado')
                     ->badge()
+                    ->getStateUsing(fn ($record) => $record->estado?->value ?? $record->estado) // <--- esto saca el string del Enum
                     ->colors([
-                        'primary' => ProyectoEstadoEnum::Pendiente->value,
-                        'warning' => ProyectoEstadoEnum::EnProgreso->value,
-                        'success' => ProyectoEstadoEnum::Finalizado->value,
-                        'danger'  => ProyectoEstadoEnum::Cancelado->value,
+                        'primary' => 'pendiente',
+                        'warning' => 'en_progreso',
+                        'success' => 'finalizado',
+                        'danger'  => 'cancelado',
                     ])
+                    ->formatStateUsing(fn ($state) => \App\Enums\ProyectoEstadoEnum::tryFrom($state)?->getLabel() ?? $state)
                     ->sortable(),
                       TextColumn::make('agenda')
                     ->label('Próx. Seguimiento')
@@ -313,6 +315,7 @@ class ProyectoResource extends Resource implements HasShieldPermissions
                    
                     ->label('Fecha Finalización'),
             ])
+           
             ->actions([
                 Tables\Actions\EditAction::make()
                 ->openUrlInNewTab(),

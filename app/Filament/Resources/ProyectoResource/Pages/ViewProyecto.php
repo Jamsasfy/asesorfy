@@ -18,5 +18,16 @@ class ViewProyecto extends ViewRecord
         ];
     }
 
+   // app/Filament/Resources/ProyectoResource/Pages/ViewProyecto.php
+public function relations(): array
+{
+    return [
+        \App\Filament\Resources\ProyectoResource\RelationManagers\DocumentosRelationManager::class,
+        // ...otros relationmanagers
+    ];
+}
+
+
+
     
 }

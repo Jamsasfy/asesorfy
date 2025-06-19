@@ -28,6 +28,10 @@ class DocumentosRelationManager extends RelationManager
     protected static string $relationship = 'documentosPolimorficos';
         protected static ?string $title = 'Documentos de este proyecto';
 
+public function isReadOnly(): bool
+{
+    return false;
+}
 
     public function form(Form $form): Form
     {
@@ -56,7 +60,12 @@ class DocumentosRelationManager extends RelationManager
                     'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 ])
                 ->preserveFilenames(false)
-                ->visibility('public'),
+                ->visibility('public')
+                 ->afterStateUpdated(function ($state, callable $set) {
+                    if ($state) {
+                        $set('nombre', $state->getClientOriginalName());
+                    }
+                }),
             TextInput::make('nombre')
                 ->label('Nombre del documento')
                 ->required()
@@ -67,6 +76,8 @@ class DocumentosRelationManager extends RelationManager
                 ->columnSpanFull(),
         ]);
     }
+
+
 
     public function table(Table $table): Table
     {
@@ -120,12 +131,47 @@ class DocumentosRelationManager extends RelationManager
                     ->sortable(),
             ])
             ->defaultSort('created_at', 'desc')
+            ->headerActions([
+    \Filament\Tables\Actions\CreateAction::make()
+        ->mutateFormDataUsing(function (array $data, $livewire) {
+            $user = \Illuminate\Support\Facades\Auth::user();
+            // ¡Así accedes al proyecto desde el RelationManager!
+    $proyecto = $livewire->getOwnerRecord();
+            $data['user_id'] = $user->id;
+            $data['mime_type'] = \Illuminate\Support\Facades\Storage::disk('public')->mimeType($data['ruta']);
+            $data['verificado'] = $user->trabajador ? true : false;
+            $data['cliente_id'] = $proyecto->cliente_id;  // <-- Esta línea soluciona el error
+            // Puedes añadir aquí más lógica si quieres, por ejemplo, setear cliente_id si lo necesitas
+
+            return $data;
+        })
+        ->after(function ($record, $livewire) {
+            // Añadir comentario automático al proyecto cuando se sube un documento
+            $proyecto = $record->documentable;
+            $usuario = auth()->user()?->name ?? 'Usuario desconocido';
+
+            if ($proyecto instanceof \App\Models\Proyecto) {
+                $proyecto->comentarios()->create([
+                    'user_id' => auth()->id(),
+                    'contenido' => "📎 Se ha subido un documento {$record->nombre} por {$usuario}.",
+
+                ]);
+            }
+            $livewire->redirect(request()->header('Referer') ?? url()->previous());
+        }),
+])
+           
             ->filters([
                 // Añade aquí los filtros que necesites
             ])
+          
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\ViewAction::make(),
+               \Filament\Tables\Actions\ViewAction::make()
+               ->visible(fn () => true)
+                ->url(fn($record) => route('filament.admin.resources.documentos.view', ['record' => $record]))
+        ->openUrlInNewTab(), // O quita esto si lo quieres en la misma pestaña
+
+            \Filament\Tables\Actions\EditAction::make()->visible(fn () => true),
             ])
             ->bulkActions([
                 Tables\Actions\DeleteBulkAction::make(),
