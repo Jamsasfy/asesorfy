@@ -142,12 +142,7 @@ class Venta extends Model
      */
     public function checkAndActivateSubscriptions(): void
     {
-        // dd('checkAndActivateSubscriptions llamado, pero está vacío por ahora'); // DEBUGGING
-        // Aquí irá la lógica para:
-        // 1. Cargar todos los proyectos de activación vinculados a esta venta.
-        // 2. Verificar si TODOS están finalizados.
-        // 3. Si es así, activar las ClienteSuscripciones pendientes asociadas a esta venta.
-        // 4. Actualizar el estado del Cliente si es necesario.
+       
 
 
 

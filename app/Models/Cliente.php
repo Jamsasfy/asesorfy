@@ -194,5 +194,39 @@ protected function tarifaPrincipalActivaConPrecio(): Attribute
         );
     }
    
+protected static function booted(): void
+{
+    static::deleting(function (Cliente $cliente) {
+        // 🗑️ Comentarios
+        $cliente->comentarios()->delete();
+
+        // 🗑️ Documentos normales
+        $cliente->documentos()->each(fn ($doc) => $doc->delete());
+
+        // 🗑️ Documentos polimórficos
+        $cliente->documentosPolimorficos()->each(fn ($doc) => $doc->delete());
+
+        // 🗑️ Ventas
+        $cliente->ventas()->each(fn ($venta) => $venta->delete());
+
+        // 🗑️ Suscripciones
+        $cliente->suscripciones()->each(fn ($suscripcion) => $suscripcion->delete());
+
+        // 👥 Usuarios con acceso a este cliente
+        foreach ($cliente->usuarios as $usuario) {
+            $otrosClientes = $usuario->clientes()->where('clientes.id', '!=', $cliente->id)->exists();
+
+            if (! $otrosClientes) {
+                // Solo se elimina si no tiene más accesos
+                $usuario->delete();
+            }
+        }
+
+        // 🔓 Limpieza de la tabla pivote
+        $cliente->usuarios()->detach();
+    });
+}
+
+
 
 }
