@@ -128,12 +128,13 @@ public static function canAccess(): bool
                 ->color('warning')
                 ->getStateUsing(function ($record) {
                     if (! $record->comentable) return '—';
-                
+
                     return $record->comentable->razon_social
                         ?? $record->comentable->nombre
                         ?? $record->comentable->name
-                        ?? '—';
+                        ?? ($record->comentable->nombre ?? 'ID ' . $record->comentable->id);
                 })
+
                 ->sortable()
                 ->searchable(),
 
@@ -170,6 +171,7 @@ public static function canAccess(): bool
                                     $campo = 'name';
                                     if (Str::contains($model, 'Cliente')) $campo = 'razon_social';
                                     if (Str::contains($model, 'Lead')) $campo = 'nombre';
+                                    if (Str::contains($model, 'Proyecto')) $campo = 'nombre';
 
                                     return $model::query()->pluck($campo, 'id');
                                 })

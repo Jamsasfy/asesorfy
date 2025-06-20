@@ -5,6 +5,7 @@ namespace App\Filament\Resources\ProyectoResource\Pages;
 use App\Filament\Resources\ProyectoResource;
 use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
+use Filament\Tables\Filters\TrashedFilter;
 
 class ListProyectos extends ListRecords
 {
@@ -16,4 +17,10 @@ class ListProyectos extends ListRecords
             Actions\CreateAction::make(),
         ];
     }
+    public function getFilters(): array
+{
+    return [
+        TrashedFilter::make(), // Filtro para ver activos / papelera / todos
+    ];
+}
 }

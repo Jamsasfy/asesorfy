@@ -41,9 +41,8 @@ use Filament\Support\Enums\Alignment;
 use Illuminate\Support\Facades\Log; // Para Log::error
 use Filament\Forms\Components\Toggle; // Para el Toggle en los formularios de las acciones
 use Illuminate\Database\Eloquent\Model;
-
-
-
+use Filament\Tables\Filters\TrashedFilter;
+use Illuminate\Database\Eloquent\Collection;
 
 
 
@@ -68,13 +67,15 @@ class ProyectoResource extends Resource implements HasShieldPermissions
             'assign_assessor',   // Permiso para asignar/cambiar asesor
             'unassign_assessor', // Permiso para quitar asesor
           
+          
         ];
     }
   public static function getEloquentQuery(): Builder
     {
         /** @var \App\Models\User|null $user */
         $user = Auth::user();
-        $query = parent::getEloquentQuery()->with(['cliente']); 
+        $query = parent::getEloquentQuery()                
+                ->with(['cliente']); 
         
         if (!$user) {
             return $query->whereRaw('1 = 0');
@@ -314,13 +315,17 @@ class ProyectoResource extends Resource implements HasShieldPermissions
                 DateRangeFilter::make('fecha_finalizacion')
                    
                     ->label('Fecha Finalización'),
+                     
             ])
-           
+         
             ->actions([
                 Tables\Actions\EditAction::make()
                 ->openUrlInNewTab(),
                 Tables\Actions\ViewAction::make()
                  ->openUrlInNewTab(),
+
+
+
                   // <<< AÑADIDO: Acción para Asignar Asesor
                Action::make('assign_assessor')
                     ->label(fn (Proyecto $record): string => $record->user_id ? 'Cambiar Asesor' : 'Asignar Asesor')
@@ -414,11 +419,16 @@ class ProyectoResource extends Resource implements HasShieldPermissions
 
 
                 ])
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
-            ]);
+->bulkActions([
+    Tables\Actions\BulkActionGroup::make([
+        Tables\Actions\DeleteBulkAction::make(),
+
+      
+    ]),
+])
+
+
+;
     }
 
      // <<< AÑADIDO: Método infolist para la página de vista detallada

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CicloFacturacionEnum;
 use App\Enums\ServicioTipoEnum; // Importar el Enum
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -26,6 +27,7 @@ class Servicio extends Model
         'activo',
         'es_tarifa_principal', // Este campo es opcional, solo si lo necesitas
         'requiere_proyecto_activacion', // <<< AÑADIDO
+        'ciclo_facturacion',
 
     ];
 
@@ -42,6 +44,7 @@ class Servicio extends Model
         // Castear 'precio_base' a decimal con 2 decimales (opcional pero bueno para consistencia)
         'precio_base' => 'decimal:2',
        'requiere_proyecto_activacion' => 'boolean', // <<< AÑADIDO
+        'ciclo_facturacion' => CicloFacturacionEnum::class,
 
     ];
 

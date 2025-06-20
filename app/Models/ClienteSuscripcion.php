@@ -11,6 +11,9 @@ class ClienteSuscripcion extends Model
 {
     use HasFactory;
 
+    protected $table = 'cliente_suscripciones';
+
+
     /**
      * The attributes that are mass assignable.
      *

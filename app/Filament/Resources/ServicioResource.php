@@ -2,18 +2,21 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\CicloFacturacionEnum;
 use App\Enums\ServicioTipoEnum; // Importar Enum
 use App\Filament\Resources\ServicioResource\Pages;
 use App\Filament\Resources\ServicioResource\RelationManagers;
 use App\Models\Servicio;
 use Filament\Forms;
 use Filament\Forms\Components\Checkbox;
+use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle; // Importar Toggle
 use Filament\Forms\Form;
+use Filament\Forms\Get;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Columns\IconColumn; // Importar IconColumn
@@ -37,57 +40,66 @@ class ServicioResource extends Resource
     protected static ?int $navigationSort = 1; // Orden en el menú
 
     public static function form(Form $form): Form
-    {
-        return $form
-            ->schema([
-                Section::make('Detalles del Servicio')
-                    ->columns(2)
-                    ->schema([
+{
+    return $form
+        ->schema([
+            Section::make('Detalles del Servicio')
+                ->schema([
+                    Grid::make(4)->schema([
                         TextInput::make('nombre')
                             ->required()
-                            ->maxLength(255)
-                            ->columnSpan(1),
+                            ->maxLength(255),
 
                         Select::make('tipo')
                             ->required()
-                            ->options(ServicioTipoEnum::class) // Usar el Enum para las opciones
-                            // Opcional: Para mostrar etiquetas legibles si definiste getLabel() en el Enum
-                            // ->getOptionLabelFromRecordUsing(fn (ServicioTipoEnum $record) => $record->getLabel())
-                            ->columnSpan(1),
+                            ->reactive()
+                            ->options(ServicioTipoEnum::class),
 
                         TextInput::make('precio_base')
                             ->required()
                             ->numeric()
                             ->prefix('€')
                             ->inputMode('decimal')
-                            ->step('0.01') // Para permitir céntimos
-                            ->minValue(0)
-                            ->columnSpan(1),
+                            ->step('0.01')
+                            ->minValue(0),
 
+                        Select::make('ciclo_facturacion')
+                            ->label('Ciclo de facturación por defecto')
+                            ->options(
+                                collect(CicloFacturacionEnum::cases())
+                                    ->mapWithKeys(fn ($case) => [$case->value => $case->label()])
+                                    ->toArray()
+                            )
+                            ->default(CicloFacturacionEnum::MENSUAL->value)
+                            ->nullable()
+                            ->searchable()
+                            ->visible(fn (Get $get) => $get('tipo') === ServicioTipoEnum::RECURRENTE->value)
+                            ->required(fn (Get $get) => $get('tipo') === ServicioTipoEnum::RECURRENTE->value),
+                    ]),
+
+                    Grid::make(3)->schema([
                         Toggle::make('activo')
                             ->required()
                             ->default(true)
-                            ->label('Servicio Activo')
-                            ->columnSpan(1),
+                            ->label('Servicio Activo'),
+
                         Toggle::make('es_tarifa_principal')
                             ->required()
                             ->default(true)
                             ->label('¿Es tarifa principal?')
-                            ->helperText('Si es tarifa principal, se usará como tarifa por defecto para este servicio.')
-                            ->columnSpan(1),   
-                            // <<< AÑADIDO: Toggle para requiere_proyecto_activacion
+                            ->helperText('Se usará como tarifa por defecto para este servicio.'),
+
                         Toggle::make('requiere_proyecto_activacion')
                             ->label('Requiere Proyecto de Activación')
-                            ->helperText('Activar si este servicio recurrente inicia un proyecto de activación (ej. alta de autónomo).')
-                            ->columnSpan(1), 
-
-                        Textarea::make('descripcion')
-                            ->maxLength(65535)
-                            ->columnSpanFull(),
+                            ->helperText('Ej. alta de autónomo, capitalización, etc.'),
                     ]),
-            ]);
-    }
 
+                    Textarea::make('descripcion')
+                        ->maxLength(65535)
+                        ->columnSpanFull(),
+                ]),
+        ]);
+}
     public static function table(Table $table): Table
     {
         return $table

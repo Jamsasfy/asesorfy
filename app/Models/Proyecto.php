@@ -5,16 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany; // Para comentarios morfológicos
-use Illuminate\Database\Eloquent\SoftDeletes; // Para borrado suave
 use App\Enums\ProyectoEstadoEnum; // Si defines un Enum para los estados del proyecto
 use Illuminate\Database\Eloquent\Casts\Attribute; // Asegúrate de importar Attribute
 
 
 class Proyecto extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory;
 
     protected $fillable = [
         'nombre',
@@ -113,5 +111,17 @@ class Proyecto extends Model
                 }
             }
         });
+
+         static::deleting(function (Proyecto $proyecto) {
+        // Eliminar comentarios relacionados
+        $proyecto->comentarios()->delete();
+
+        // Eliminar documentos relacionados
+        $proyecto->documentosPolimorficos()->each(function ($documento) {
+            $documento->delete(); // Esto dispara el delete del documento (incluye eliminación física si corresponde)
+        });
+    });
+
+    
     }
 }

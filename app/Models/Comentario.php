@@ -25,9 +25,10 @@ class Comentario extends Model
 {
     return [
         \App\Models\Cliente::class => 'Cliente',
-        // En el futuro:
+       
          \App\Models\Lead::class => 'Lead',
-        // \App\Models\Proyecto::class => 'Proyecto',
+       
+         \App\Models\Proyecto::class => 'Proyecto',
     ];
 }
 }

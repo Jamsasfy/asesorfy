@@ -138,8 +138,7 @@ class Venta extends Model
 
     /**
      * Este método es llamado por el modelo Proyecto cuando se finaliza.
-     * Por ahora, lo dejamos vacío. Más adelante, contendrá la lógica
-     * para verificar los proyectos de esta venta y activar las suscripciones.
+    
      */
     public function checkAndActivateSubscriptions(): void
     {
@@ -149,6 +148,46 @@ class Venta extends Model
         // 2. Verificar si TODOS están finalizados.
         // 3. Si es así, activar las ClienteSuscripciones pendientes asociadas a esta venta.
         // 4. Actualizar el estado del Cliente si es necesario.
+
+
+
+        // Obtener los items de esta venta que sean tarifas principales y recurrentes
+    $ventaItems = $this->items()
+        ->where('es_tarifa_principal', true)
+        ->whereHas('servicio', function ($query) {
+            $query->where('tipo', ServicioTipoEnum::RECURRENTE);
+        })
+        ->get();
+
+    foreach ($ventaItems as $item) {
+        // Buscar la suscripción pendiente para este cliente + servicio + venta
+        $suscripcion = ClienteSuscripcion::where('cliente_id', $this->cliente_id)
+            ->where('servicio_id', $item->servicio_id)
+            ->where('venta_origen_id', $this->id)
+            ->where('estado', ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION)
+            ->first();
+
+        if (! $suscripcion) {
+            continue; // No hay suscripción pendiente para este item
+        }
+
+        // Verificar si aún hay proyectos activos relacionados a esta venta
+        $proyectosIncompletos = $this->proyectos()
+            ->whereNot('estado', ProyectoEstadoEnum::Finalizado)
+            ->exists();
+
+        if (! $proyectosIncompletos) {
+            // Si todos los proyectos están finalizados, activar la suscripción
+            $suscripcion->estado = ClienteSuscripcionEstadoEnum::ACTIVA;
+            $suscripcion->fecha_inicio = now();
+            $suscripcion->save();
+
+            // Opcional: log o notificación
+            // Log::info("Suscripción activada automáticamente para el cliente ID {$this->cliente_id} y servicio ID {$item->servicio_id}");
+        }
+    }
+
+    
     }
 
      
