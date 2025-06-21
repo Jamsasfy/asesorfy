@@ -143,9 +143,6 @@ class Venta extends Model
     public function checkAndActivateSubscriptions(): void
     {
        
-
-
-
         // Obtener los items de esta venta que sean tarifas principales y recurrentes
     $ventaItems = $this->items()
         ->where('es_tarifa_principal', true)
@@ -237,6 +234,57 @@ class Venta extends Model
             }
         );
     }
-   
-   
+   public function crearSuscripcionesDesdeItems(): void
+{
+     // 🔧 Asegura que las relaciones estén disponibles
+    $this->loadMissing(['items.servicio', 'proyectos']);
+    // Ver si hay proyectos únicos en esta venta
+    $tieneProyectosUnicos = $this->proyectos()
+        ->whereHas('ventaItem.servicio', fn ($q) => $q->where('tipo', ServicioTipoEnum::UNICO))
+        ->exists();
+
+    foreach ($this->items as $item) {
+            logger()->info("🛠️ Creando suscripción para item ID {$item->id}");
+
+        $servicio = $item->servicio;
+
+        $suscripcion = new ClienteSuscripcion([
+            'cliente_id'               => $this->cliente_id,
+            'servicio_id'             => $item->servicio_id,
+            'venta_origen_id'         => $this->id,
+           'es_tarifa_principal' => $servicio->es_tarifa_principal,
+            'precio_acordado'         => $item->precio_unitario_aplicado,
+            'cantidad'                => $item->cantidad,
+            'descuento_tipo'          => $item->descuento_tipo,
+            'descuento_valor'         => $item->descuento_valor,
+            'descuento_descripcion'   => $item->observaciones_descuento,
+            'descuento_valido_hasta'  => $item->descuento_valido_hasta,
+            'observaciones'           => $item->observaciones_item,
+            'ciclo_facturacion'       => $servicio->ciclo_facturacion,
+        ]);
+
+        if ($servicio->tipo === ServicioTipoEnum::UNICO) {
+            $suscripcion->estado = ClienteSuscripcionEstadoEnum::ACTIVA;
+            $suscripcion->fecha_inicio = now();
+            $suscripcion->fecha_fin = now(); // Ya está hecho, no se factura nada más
+
+        } elseif ($servicio->tipo === ServicioTipoEnum::RECURRENTE) {
+            if ($tieneProyectosUnicos) {
+                $suscripcion->estado = ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION;
+                $suscripcion->fecha_inicio = null;
+                $suscripcion->proxima_fecha_facturacion = null;
+            } else {
+                $suscripcion->estado = ClienteSuscripcionEstadoEnum::ACTIVA;
+                $suscripcion->fecha_inicio = $item->fecha_inicio_servicio ?? now();
+                $suscripcion->proxima_fecha_facturacion = null; // Se generará factura cuando se cobre
+            }
+        }
+
+        $suscripcion->save();
+    }
+}
+
+
+  
+
 }

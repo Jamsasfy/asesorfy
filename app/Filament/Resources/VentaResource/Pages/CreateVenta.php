@@ -5,8 +5,7 @@ namespace App\Filament\Resources\VentaResource\Pages;
 use App\Filament\Resources\VentaResource;
 use Filament\Actions;
 use Filament\Resources\Pages\CreateRecord;
-use Filament\Forms\Get; // Asegúrate de importar Get y Set
-use Filament\Forms\Set;
+
 use App\Models\Venta;
 
 class CreateVenta extends CreateRecord
@@ -20,12 +19,17 @@ class CreateVenta extends CreateRecord
     }
    
 
-    protected function afterCreate(): void
-    {
-        if ($this->record) {
-            $this->record->updateTotal();
-        }
+ protected function afterCreate(): void
+{
+    if ($this->record) {
+        $this->record->updateTotal();
+
+        // Precargamos los servicios para cada item antes de crear suscripciones
+        $this->record->loadMissing('items.servicio');
+
+        $this->record->crearSuscripcionesDesdeItems();
     }
+}
 
    
 

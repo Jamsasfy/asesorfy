@@ -235,11 +235,38 @@ public static function form(Form $form): Form
                                     ->columnSpan(1)
                                     ->dehydrated(true),
                                     
-                                DatePicker::make('fecha_inicio_servicio')
-                                    ->label('Inicio Servicio (si es recurrente)')
-                                    ->native(false)
-                                    ->nullable()
-                                    ->columnSpan(2),
+                               DatePicker::make('fecha_inicio_servicio')
+                                ->label('Inicio Servicio')
+                                ->native(false)
+                                ->nullable()
+                               ->required()
+                               ->visible(function (Get $get) {
+        $servicioId = $get('servicio_id');
+        if (! $servicioId) return false;
+
+        $servicio = \App\Models\Servicio::find($servicioId);
+        if (! $servicio || $servicio->tipo->value !== 'recurrente') {
+            return false;
+        }
+
+        // Buscar si hay algún otro item con servicio que requiere proyecto
+        $todosLosItems = $get('../../items') ?? [];
+
+        foreach ($todosLosItems as $index => $item) {
+            if ($get("../../items.{$index}.servicio_id") == $servicioId) {
+                continue; // saltar el propio item
+            }
+
+            $servicioRelacionado = \App\Models\Servicio::find($item['servicio_id'] ?? null);
+            if ($servicioRelacionado && $servicioRelacionado->requiere_proyecto_activacion) {
+                return false; // Hay otro item que requiere proyecto => no mostrar el campo
+            }
+        }
+
+        // No hay proyectos => sí mostrar el campo y hacerlo obligatorio
+        return true;
+    })
+                                ->columnSpan(2),
 
                                 Textarea::make('observaciones_item')
                                     ->label('Notas del servicio')
@@ -309,21 +336,30 @@ public static function form(Form $form): Form
                                             })
                                             ->dehydrated(true)
                                             
-                                            ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
-                                                if (empty($state) || !is_numeric($state)) {
-                                                    $set('descuento_valido_hasta', null);
-                                                } else {
-                                                    $fechaInicioBase = $get('fecha_inicio_servicio') ?? $get('../../fecha_venta');
-                                                    if ($fechaInicioBase) {
-                                                        $fechaFinDescuento = now()->parse($fechaInicioBase)
-                                                                                    ->addMonths((int)$state - 1)
-                                                                                    ->endOfMonth()
-                                                                                    ->format('Y-m-d');
-                                                        $set('descuento_valido_hasta', $fechaFinDescuento);
-                                                    }
-                                                }
+                                          ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
+                                            if (empty($state) || !is_numeric($state)) {
+                                                $set('descuento_valido_hasta', null);
                                                 self::updateTotals($get, $set);
-                                            }),
+                                                return;
+                                            }
+
+                                            $fechaInicio = $get('fecha_inicio_servicio');
+
+                                            if (! $fechaInicio) {
+                                                $set('descuento_valido_hasta', null);
+                                                self::updateTotals($get, $set);
+                                                return;
+                                            }
+
+                                            $fechaFinDescuento = \Carbon\Carbon::parse($fechaInicio)
+                                                ->addMonths((int)$state - 1)
+                                                ->endOfMonth()
+                                                ->format('Y-m-d');
+
+                                            $set('descuento_valido_hasta', $fechaFinDescuento);
+                                            self::updateTotals($get, $set);
+                                        }),
+
 
                                         DatePicker::make('descuento_valido_hasta')
                                             ->label('Dto Válido Hasta')
@@ -340,7 +376,8 @@ public static function form(Form $form): Form
                                                 return Servicio::find($servicioId)?->tipo?->value === 'recurrente'; 
                                             })
                                             ->dehydrated(true)
-                                          ,
+                                           ,
+                                          
 
                                             
                                         Textarea::make('observaciones_descuento') 
@@ -379,7 +416,8 @@ public static function form(Form $form): Form
                             ->live(), 
                     ])
                     ->columnSpanFull(),
-            ]);
+                                        ]);
+            
     }
 
     private static function updateTotals(Get $get, Set $set): void

@@ -115,6 +115,18 @@ class ServicioResource extends Resource
                         ServicioTipoEnum::RECURRENTE => 'success',
                     }) // Colores para los badges
                     ->sortable(),
+                    
+                     TextColumn::make('ciclo_facturacion')
+                    ->label('Ciclo de facturación')
+                    ->formatStateUsing(fn (CicloFacturacionEnum $state): string => $state->label()) // Usar etiqueta del Enum
+                    ->color(fn (CicloFacturacionEnum $state): string => match ($state) {
+                        CicloFacturacionEnum::MENSUAL => 'primary',
+                        CicloFacturacionEnum::TRIMESTRAL => 'secondary',
+                        CicloFacturacionEnum::ANUAL => 'warning',
+                    }) // Colores para los badges
+                   
+                    ->searchable()
+                    ->sortable(),
                 TextColumn::make('precio_base')
                     ->money('EUR') // Formatear como moneda
                     ->sortable(),
