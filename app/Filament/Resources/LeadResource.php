@@ -199,9 +199,8 @@ public static function shouldRegisterNavigation(): bool
                             ->label('Estado del Lead')
                             ->columnSpan(1)
                             ->disabled(fn (?Lead $record): bool =>
-                            // Deshabilita si ya hay cliente y al menos una venta
-                            ! is_null($record?->cliente_id) 
-                        )
+        $record?->estado?->isFinal()
+    )
                         ->helperText(fn (?Lead $record): ?string =>
                             (! is_null($record?->cliente_id))
                                 ? 'No puedes cambiar el estado, ya se creó el cliente y la venta del mismo.'
@@ -426,10 +425,9 @@ public static function infolist(Infolist $infolist): Infolist
                                 ->modalSubmitActionLabel('Guardar Estado')
                                 ->modalWidth('xl') // O el ancho que prefieras
                                                     // Solo muéstralo si NO hay cliente asignado aun
-                                                    ->visible(fn (Lead $record): bool =>
-                                                    // Sólo muestra mientras no exista ninguna venta ligada a este Lead
-                                                    $record->ventas()->count() === 0
-                                                )
+                                ->visible(fn (Lead $record): bool =>
+                                    ! $record->estado->isFinal()
+                                )
                                 ->form([ // Formulario del modal CORREGIDO
                                     Select::make('estado')
                                         ->label('Nuevo estado')
@@ -484,76 +482,79 @@ public static function infolist(Infolist $infolist): Infolist
                                         ->helperText(fn(Get $get) => (LeadEstadoEnum::tryFrom($get('estado') ?? '') === LeadEstadoEnum::DESCARTADO) ? 'Obligatorio al descartar.' : 'Opcional si convierte.')
                                         ->columnSpanFull(),
                                 ])
-                                ->action(function (array $data, Lead $record) { // Lógica de acción CORREGIDA
+                                ->action(function (array $data, Lead $record) {
                                     $nuevoEstado = LeadEstadoEnum::tryFrom($data['estado']);
-                                    if (!$nuevoEstado) { Notification::make()->danger()->title('Error Estado')->send(); return; }
-                    
-                                    $record->estado = $nuevoEstado; // Asigna el objeto Enum
+                                    if (!$nuevoEstado) {
+                                        Notification::make()->danger()->title('Error Estado')->send();
+                                        return;
+                                    }
+
+                                    // ⚠️ Si el nuevo estado es CONVERTIDO, no guardamos aún y redirigimos directamente
+                                    if ($nuevoEstado->isConvertido()) {
+                                        return redirect(
+                                            $record->cliente_id
+                                                ? \App\Filament\Resources\VentaResource::getUrl('create', [
+                                                    'cliente_id' => $record->cliente_id,
+                                                    'lead_id'    => $record->id,
+                                                ])
+                                                : \App\Filament\Resources\ClienteResource::getUrl('create', [
+                                                    'lead_id'      => $record->id,
+                                                    'razon_social' => $record->nombre,
+                                                    'email'        => $record->email,
+                                                    'telefono'     => $record->tfn,
+                                                    'next'         => 'sale',
+                                                ])
+                                        );
+                                    }
+
+                                    // 📝 Guardamos el nuevo estado (si NO es CONVERTIDO)
+                                    $record->estado = $nuevoEstado;
                                     $comentarioBase = 'Cambio de estado a: ' . $nuevoEstado->getLabel();
                                     $record->motivo_descarte_id = null;
-                                    $record->observacion_cierre = null; // Limpiar antes de reasignar si aplica
-                    
-                                    // Lógica para estados finales
+                                    $record->observacion_cierre = null;
+
                                     if ($nuevoEstado->isFinal()) {
                                         $record->fecha_cierre = $data['fecha_cierre'] ?? now();
-                                        if (!empty($data['observacion_cierre'])) { $record->observacion_cierre = $data['observacion_cierre']; }
+
+                                        if (!empty($data['observacion_cierre'])) {
+                                            $record->observacion_cierre = $data['observacion_cierre'];
+                                        }
+
                                         if ($nuevoEstado === LeadEstadoEnum::DESCARTADO) {
                                             if (!empty($data['motivo_descarte_id'])) {
                                                 $record->motivo_descarte_id = $data['motivo_descarte_id'];
                                                 $motivo = MotivoDescarte::find($data['motivo_descarte_id']);
-                                                if ($motivo) { $comentarioBase .= ' - Motivo: ' . $motivo->nombre; }
+                                                if ($motivo) {
+                                                    $comentarioBase .= ' - Motivo: ' . $motivo->nombre;
+                                                }
                                             }
-                                             // Añadir observación obligatoria al comentario si es descarte
-                                             if (!empty($data['observacion_cierre'])) { $comentarioBase .= "\n---\nObservación: " . $data['observacion_cierre']; }
+
+                                            if (!empty($data['observacion_cierre'])) {
+                                                $comentarioBase .= "\n---\nObservación: " . $data['observacion_cierre'];
+                                            }
                                         }
-                                    } else { // Si no es estado final, limpiar campos de cierre
+                                    } else {
                                         $record->fecha_cierre = null;
                                         $record->motivo_descarte_id = null;
                                         $record->observacion_cierre = null;
                                     }
-                    
-                                   
-                    
-                                    $comentarioFinal = $comentarioBase; // Usamos el texto construido
-                    
-                                    $record->save(); // Guardar Lead
-                    
-                                    // --- Crear comentario usando SAVE manual ---
+
+                                    $comentarioFinal = $comentarioBase;
+
+                                    $record->save();
+
+                                    // Guardamos el comentario
                                     try {
                                         $comentario = new Comentario();
                                         $comentario->user_id = Auth::id();
-                                        $comentario->contenido = $comentarioFinal; // Usa campo 'contenido'
-                                        $record->comentarios()->save($comentario); // Usa método save()
-                                    } catch (\Exception $e) { 
-                                        Log::error('Error al guardar comentario (cambiar_estado): ' . $e->getMessage()); 
-                                        Notification::make()->danger()->title('Error Comentario')->send(); }
-                                    // --- Fin crear comentario ---
-                    
-                                    Notification::make()->title('Estado actualizado')->success()->send();
-
-                                    if ($nuevoEstado->isConvertido()) {
-                                        // Si ya existe cliente vinculado, vamos a Crear Venta
-                                        if ($record->cliente_id) {
-                                            return redirect(
-                                                \App\Filament\Resources\VentaResource::getUrl('create', [
-                                                    'cliente_id' => $record->cliente_id,
-                                                    'lead_id'    => $record->id,
-                                                ])
-                                            );
-                                        }
-                                    
-                                        // Si no existe cliente aún, vamos a Crear Cliente
-                                        return redirect(
-                                            \App\Filament\Resources\ClienteResource::getUrl('create', [
-                                                'lead_id'      => $record->id,
-                                                'razon_social' => $record->nombre,
-                                                'email'        => $record->email,
-                                                'telefono'     => $record->tfn,
-                                                'next'         => 'sale',
-                                            ])
-                                        );
+                                        $comentario->contenido = $comentarioFinal;
+                                        $record->comentarios()->save($comentario);
+                                    } catch (\Exception $e) {
+                                        Log::error('Error al guardar comentario (cambiar_estado): ' . $e->getMessage());
+                                        Notification::make()->danger()->title('Error Comentario')->send();
                                     }
 
+                                    Notification::make()->title('Estado actualizado')->success()->send();
                                 }) // Fin ->action()
                         ), // Fin ->suffixAction()
 

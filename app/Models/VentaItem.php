@@ -68,33 +68,50 @@ class VentaItem extends Model
    protected static function booted(): void
     {
         // <<< CAMBIO CLAVE AQUI: Integración del hook 'saving'
-        static::saving(function (VentaItem $ventaItem) {
-            // dd('VentaItem Saving Hook', ['descuento_tipo_before_check' => $ventaItem->descuento_tipo, 'descuento_valor_before_nullify' => $ventaItem->descuento_valor]); // DEBUGGING DD
+       static::saving(function (VentaItem $ventaItem) {
+                    // Limpiar campos de descuento si no hay tipo definido
+                    if (empty($ventaItem->descuento_tipo)) {
+                        $ventaItem->descuento_valor = null;
+                        $ventaItem->descuento_duracion_meses = null;
+                        $ventaItem->descuento_valido_hasta = null;
+                        $ventaItem->observaciones_descuento = null;
+                    }
 
-            // Si el descuento_tipo está vacío (null o cadena vacía), limpiar todos los campos de descuento
-            if (empty($ventaItem->descuento_tipo)) {
-                $ventaItem->descuento_valor = null;
-                $ventaItem->descuento_duracion_meses = null;
-                $ventaItem->descuento_valido_hasta = null;
-                $ventaItem->observaciones_descuento = null;
-            }
-            // Asegurarse de que si el valor numérico del descuento es 0 o null, se guarde como null
-            // Esto es útil si el campo se vacía pero no se marca como 'sin descuento' explícitamente
-            // Comprobamos si el valor no es nulo Y es 0 (para no nullificar un 0 válido)
-            // O si es una cadena vacía
-            if ($ventaItem->descuento_valor === '') {
-                 $ventaItem->descuento_valor = null;
-            }
-            if ($ventaItem->descuento_duracion_meses === '') {
-                 $ventaItem->descuento_duracion_meses = null;
-            }
-            if ($ventaItem->descuento_valido_hasta === '') {
-                 $ventaItem->descuento_valido_hasta = null;
-            }
-            if ($ventaItem->observaciones_descuento === '') {
-                 $ventaItem->observaciones_descuento = null;
-            }
-        });
+                    // Limpiar campos vacíos si son string vacíos
+                    foreach (['descuento_valor', 'descuento_duracion_meses', 'descuento_valido_hasta', 'observaciones_descuento'] as $campo) {
+                        if ($ventaItem->{$campo} === '') {
+                            $ventaItem->{$campo} = null;
+                        }
+                    }
+
+                    // 🧠 Cálculo de precio aplicado y subtotal
+                    if (!is_null($ventaItem->precio_unitario)) {
+                        $cantidad = (float)($ventaItem->cantidad ?? 1);
+                        $precioUnitario = (float)$ventaItem->precio_unitario;
+                        $subtotal = $cantidad * $precioUnitario;
+                        $precioFinal = $subtotal;
+
+                        if (!empty($ventaItem->descuento_tipo) && is_numeric($ventaItem->descuento_valor)) {
+                            switch ($ventaItem->descuento_tipo) {
+                                case 'porcentaje':
+                                    $precioFinal = $subtotal - ($subtotal * ($ventaItem->descuento_valor / 100));
+                                    break;
+                                case 'fijo':
+                                    $precioFinal = $subtotal - $ventaItem->descuento_valor;
+                                    break;
+                                case 'precio_final':
+                                    $precioFinal = $ventaItem->descuento_valor;
+                                    break;
+                            }
+                        }
+
+                        // Aplicar límites
+                        $precioFinal = max(0, $precioFinal);
+                        $ventaItem->precio_unitario_aplicado = round($precioFinal / max(1, $cantidad), 4);
+                        $ventaItem->subtotal_aplicado = round($precioFinal, 2);
+                    }
+                });
+
 
         // Tus hooks existentes (CREATED, UPDATED, DELETED) - SIN CAMBIOS AQUI
         static::created(function (VentaItem $ventaItem) {

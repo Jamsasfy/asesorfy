@@ -20,16 +20,20 @@ class CreateVenta extends CreateRecord
    
 
  protected function afterCreate(): void
-{
-    if ($this->record) {
-        $this->record->updateTotal();
+    {
+        if ($this->record) {
+            $this->record->updateTotal();
+            $this->record->loadMissing('items.servicio');
+            $this->record->crearSuscripcionesDesdeItems();
 
-        // Precargamos los servicios para cada item antes de crear suscripciones
-        $this->record->loadMissing('items.servicio');
-
-        $this->record->crearSuscripcionesDesdeItems();
+            // 💡 Aquí añadimos la lógica de actualizar el estado del Lead
+            if ($this->record->lead_id && $this->record->lead) {
+                $this->record->lead->update([
+                    'estado' => \App\Enums\LeadEstadoEnum::CONVERTIDO, // o CONVERTIDO_PUNTUAL según lógica
+                ]);
+            }
+        }
     }
-}
 
    
 

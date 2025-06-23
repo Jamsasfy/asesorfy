@@ -234,55 +234,72 @@ class Venta extends Model
             }
         );
     }
-   public function crearSuscripcionesDesdeItems(): void
+  public function crearSuscripcionesDesdeItems(): void
 {
-     // 🔧 Asegura que las relaciones estén disponibles
     $this->loadMissing(['items.servicio', 'proyectos']);
-    // Ver si hay proyectos únicos en esta venta
-    $tieneProyectosUnicos = $this->proyectos()
-        ->whereHas('ventaItem.servicio', fn ($q) => $q->where('tipo', ServicioTipoEnum::UNICO))
+
+    // 🔒 Verificar si el cliente YA tiene una tarifa principal activa o pendiente
+    $clienteYaTieneTarifaPrincipal = ClienteSuscripcion::where('cliente_id', $this->cliente_id)
+        ->where('es_tarifa_principal', true)
+        ->whereIn('estado', [
+            ClienteSuscripcionEstadoEnum::ACTIVA,
+            ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION,
+        ])
         ->exists();
 
     foreach ($this->items as $item) {
-            logger()->info("🛠️ Creando suscripción para item ID {$item->id}");
-
         $servicio = $item->servicio;
 
         $suscripcion = new ClienteSuscripcion([
-            'cliente_id'               => $this->cliente_id,
-            'servicio_id'             => $item->servicio_id,
-            'venta_origen_id'         => $this->id,
-           'es_tarifa_principal' => $servicio->es_tarifa_principal,
-            'precio_acordado'         => $item->precio_unitario_aplicado,
-            'cantidad'                => $item->cantidad,
-            'descuento_tipo'          => $item->descuento_tipo,
-            'descuento_valor'         => $item->descuento_valor,
-            'descuento_descripcion'   => $item->observaciones_descuento,
-            'descuento_valido_hasta'  => $item->descuento_valido_hasta,
-            'observaciones'           => $item->observaciones_item,
-            'ciclo_facturacion'       => $servicio->ciclo_facturacion,
+            'cliente_id'             => $this->cliente_id,
+            'servicio_id'            => $item->servicio_id,
+            'venta_origen_id'        => $this->id,
+            'es_tarifa_principal'    => false, // ← Por defecto no lo es
+            'precio_acordado'        => $item->precio_unitario_aplicado,
+            'cantidad'               => $item->cantidad,
+            'descuento_tipo'         => $item->descuento_tipo,
+            'descuento_valor'        => $item->descuento_valor,
+            'descuento_descripcion'  => $item->observaciones_descuento,
+            'descuento_valido_hasta' => $item->descuento_valido_hasta,
+            'observaciones'          => $item->observaciones_item,
+            'ciclo_facturacion'      => $servicio->ciclo_facturacion,
         ]);
 
+        // === ESTADO Y FECHAS SEGÚN TIPO DE SERVICIO ===
         if ($servicio->tipo === ServicioTipoEnum::UNICO) {
             $suscripcion->estado = ClienteSuscripcionEstadoEnum::ACTIVA;
             $suscripcion->fecha_inicio = now();
-            $suscripcion->fecha_fin = now(); // Ya está hecho, no se factura nada más
-
+            $suscripcion->fecha_fin = now();
         } elseif ($servicio->tipo === ServicioTipoEnum::RECURRENTE) {
-            if ($tieneProyectosUnicos) {
+            if ($this->proyectos()->whereHas('ventaItem.servicio', fn ($q) => $q->where('tipo', 'unico'))->exists()) {
                 $suscripcion->estado = ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION;
                 $suscripcion->fecha_inicio = null;
                 $suscripcion->proxima_fecha_facturacion = null;
             } else {
                 $suscripcion->estado = ClienteSuscripcionEstadoEnum::ACTIVA;
                 $suscripcion->fecha_inicio = $item->fecha_inicio_servicio ?? now();
-                $suscripcion->proxima_fecha_facturacion = null; // Se generará factura cuando se cobre
+                $suscripcion->proxima_fecha_facturacion = null;
             }
         }
 
         $suscripcion->save();
+
+        // ✅ Marcar como tarifa principal si:
+        // - el servicio lo permite,
+        // - y el cliente NO tiene ya una tarifa principal
+        if (
+            !$clienteYaTieneTarifaPrincipal &&
+            $servicio->es_tarifa_principal &&
+            $suscripcion->estado === ClienteSuscripcionEstadoEnum::ACTIVA
+        ) {
+            $suscripcion->es_tarifa_principal = true;
+            $suscripcion->save();
+            $clienteYaTieneTarifaPrincipal = true;
+        }
     }
 }
+
+
 
 
   
