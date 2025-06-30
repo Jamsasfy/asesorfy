@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Casts\Attribute; // Si usas accessors/mutators
 use App\Models\Cliente;
 use Carbon\Carbon;
+use Illuminate\Validation\ValidationException;
 
 class Venta extends Model
 {
@@ -234,73 +235,108 @@ class Venta extends Model
             }
         );
     }
-  public function crearSuscripcionesDesdeItems(): void
-{
-    $this->loadMissing(['items.servicio', 'proyectos']);
 
-    // 🔒 Verificar si el cliente YA tiene una tarifa principal activa o pendiente
-    $clienteYaTieneTarifaPrincipal = ClienteSuscripcion::where('cliente_id', $this->cliente_id)
-        ->where('es_tarifa_principal', true)
-        ->whereIn('estado', [
-            ClienteSuscripcionEstadoEnum::ACTIVA,
-            ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION,
-        ])
-        ->exists();
+
+public function crearSuscripcionesDesdeItems(): void
+{
+    // 1) Precargamos items y sus servicios
+    $this->loadMissing(['items.servicio']);
+
+    // 2) ¿Esta venta incluye algún servicio que requiera proyecto?
+    $ventaRequiereProyecto = $this->items->contains(fn ($item) =>
+        $item->servicio?->requiere_proyecto_activacion
+    );
 
     foreach ($this->items as $item) {
         $servicio = $item->servicio;
+        if (! $servicio) {
+            continue;
+        }
 
-        $suscripcion = new ClienteSuscripcion([
-            'cliente_id'             => $this->cliente_id,
-            'servicio_id'            => $item->servicio_id,
-            'venta_origen_id'        => $this->id,
-            'es_tarifa_principal'    => false, // ← Por defecto no lo es
-            'precio_acordado'        => $item->precio_unitario_aplicado,
-            'cantidad'               => $item->cantidad,
-            'descuento_tipo'         => $item->descuento_tipo,
-            'descuento_valor'        => $item->descuento_valor,
-            'descuento_descripcion'  => $item->observaciones_descuento,
-            'descuento_valido_hasta' => $item->descuento_valido_hasta,
-            'observaciones'          => $item->observaciones_item,
-            'ciclo_facturacion'      => $servicio->ciclo_facturacion,
+        $isRec  = $servicio->tipo->value === ServicioTipoEnum::RECURRENTE->value;
+        $isPri  = $servicio->es_tarifa_principal;
+
+        // 3) Recuperar o crear la suscripción
+        $sus = ClienteSuscripcion::firstOrNew([
+            'cliente_id'  => $this->cliente_id,
+            'servicio_id' => $servicio->id,
         ]);
 
-        // === ESTADO Y FECHAS SEGÚN TIPO DE SERVICIO ===
-        if ($servicio->tipo === ServicioTipoEnum::UNICO) {
-            $suscripcion->estado = ClienteSuscripcionEstadoEnum::ACTIVA;
-            $suscripcion->fecha_inicio = now();
-            $suscripcion->fecha_fin = now();
-        } elseif ($servicio->tipo === ServicioTipoEnum::RECURRENTE) {
-            if ($this->proyectos()->whereHas('ventaItem.servicio', fn ($q) => $q->where('tipo', 'unico'))->exists()) {
-                $suscripcion->estado = ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION;
-                $suscripcion->fecha_inicio = null;
-                $suscripcion->proxima_fecha_facturacion = null;
-            } else {
-                $suscripcion->estado = ClienteSuscripcionEstadoEnum::ACTIVA;
-                $suscripcion->fecha_inicio = $item->fecha_inicio_servicio ?? now();
-                $suscripcion->proxima_fecha_facturacion = null;
-            }
+        // 4) Cantidad: acumulamos solo si ya existía y es recurrente no-principal
+        if ($sus->exists && $isRec && ! $isPri) {
+            $sus->cantidad += $item->cantidad;
+        } else {
+            $sus->cantidad = $item->cantidad;
         }
 
-        $suscripcion->save();
+        // 5) Campos comunes
+        $sus->precio_acordado        = $item->precio_unitario_aplicado;
+        $sus->descuento_tipo         = $item->descuento_tipo;
+        $sus->descuento_valor        = $item->descuento_valor;
+        $sus->descuento_descripcion  = $item->observaciones_descuento;
+        $sus->descuento_valido_hasta = $item->descuento_valido_hasta;
+        $sus->observaciones          = $item->observaciones_item;
+        $sus->ciclo_facturacion      = $servicio->ciclo_facturacion;
 
-        // ✅ Marcar como tarifa principal si:
-        // - el servicio lo permite,
-        // - y el cliente NO tiene ya una tarifa principal
-        if (
-            !$clienteYaTieneTarifaPrincipal &&
-            $servicio->es_tarifa_principal &&
-            $suscripcion->estado === ClienteSuscripcionEstadoEnum::ACTIVA
-        ) {
-            $suscripcion->es_tarifa_principal = true;
-            $suscripcion->save();
-            $clienteYaTieneTarifaPrincipal = true;
+        // 6) Estado y fechas
+        if ($isRec && $isPri && $ventaRequiereProyecto) {
+            // Caso CLAVE: recurrente-principal y la venta tiene un ítem con proyecto
+            $sus->estado                   = ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION;
+            $sus->fecha_inicio             = null;
+            $sus->proxima_fecha_facturacion = null;
+        } elseif (! $isRec) {
+            // Servicio único → activa ya
+            $sus->estado       = ClienteSuscripcionEstadoEnum::ACTIVA;
+            $sus->fecha_inicio = now();
+            $sus->fecha_fin    = now();
+        } else {
+            // Recurrente (no-principal, o principal cuando no hay proyecto)
+            $sus->estado                   = ClienteSuscripcionEstadoEnum::ACTIVA;
+            $sus->fecha_inicio             = $item->fecha_inicio_servicio ?? now();
+            $sus->proxima_fecha_facturacion = null;
         }
+
+        // 7) Asegurar tarifa principal única
+        if ($isPri && $sus->estado === ClienteSuscripcionEstadoEnum::ACTIVA) {
+            // Desmarcar cualquier otra
+            ClienteSuscripcion::where('cliente_id', $this->cliente_id)
+                ->where('es_tarifa_principal', true)
+                ->update(['es_tarifa_principal' => false]);
+            $sus->es_tarifa_principal = true;
+        }
+
+        // 8) Guardar
+        $sus->save();
     }
 }
 
-
-
+protected static function booted()
+{
+    static::creating(function (Venta $venta) {
+        foreach ($venta->items as $item) {
+            $servicio = $item->servicio;
+            if (
+                $servicio
+                && $servicio->tipo->value === ServicioTipoEnum::RECURRENTE->value
+                && $servicio->es_tarifa_principal
+                && ClienteSuscripcion::where([
+                    ['cliente_id', $venta->cliente_id],
+                    ['servicio_id', $servicio->id],
+                    ['es_tarifa_principal', true],
+                ])
+                ->whereIn('estado', [
+                    ClienteSuscripcionEstadoEnum::ACTIVA->value,
+                    ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION->value,
+                ])
+                ->exists()
+            ) {
+                throw ValidationException::withMessages([
+                    'items' => "El cliente ya tiene activa o pendiente la suscripción “{$servicio->nombre}”.",
+                ]);
+            }
+        }
+    });
+}
 
   
 

@@ -91,31 +91,32 @@ class CreateCliente extends CreateRecord
      *    - Si no, a la vista de Cliente
      */
     protected function getRedirectUrl(): string
-    {
-        $leadId = request()->query('lead_id');
-        $next   = request()->query('next');
+{
+    $state  = $this->form->getState();
+    $leadId = $state['lead_id'] ?? null;
+    $next   = $state['next']    ?? null;
 
-        // Caso A: ya vinculamos cliente en afterCreate()
-        if ($leadId && $existing = Cliente::where('lead_id', $leadId)->first()) {
-            return VentaResource::getUrl('create', [
-                'cliente_id' => $existing->getKey(),
-                'lead_id'    => $leadId,
-            ]);
-        }
-
-        // Caso B: primera creación, next=sale
-        if ($next === 'sale' && $leadId) {
-            return VentaResource::getUrl('create', [
-                'cliente_id' => $this->record->getKey(),
-                'lead_id'    => $leadId,
-            ]);
-        }
-
-        // Caso C: normal, vista de Cliente
-        return static::getResource()::getUrl('view', [
-            'record' => $this->record->getKey(),
+    // Caso A: si ya existía cliente vinculado al lead, vamos a crear venta
+    if ($leadId && $existing = \App\Models\Cliente::where('lead_id', $leadId)->first()) {
+        return \App\Filament\Resources\VentaResource::getUrl('create', [
+            'cliente_id' => $existing->getKey(),
+            'lead_id'    => $leadId,
         ]);
     }
+
+    // Caso B: primera creación, si next es 'sale' o 'venta'
+    if (in_array($next, ['sale', 'venta'], true) && $leadId) {
+        return \App\Filament\Resources\VentaResource::getUrl('create', [
+            'cliente_id' => $this->record->getKey(),
+            'lead_id'    => $leadId,
+        ]);
+    }
+
+    // Caso C: vista normal de Cliente
+    return static::getResource()::getUrl('view', [
+        'record' => $this->record->getKey(),
+    ]);
+}
 
    
     protected function handleRecordCreation(array $data): Model

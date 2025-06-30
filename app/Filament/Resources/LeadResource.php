@@ -198,9 +198,10 @@ public static function shouldRegisterNavigation(): bool
                             ->default(LeadEstadoEnum::SIN_GESTIONAR)
                             ->label('Estado del Lead')
                             ->columnSpan(1)
-                            ->disabled(fn (?Lead $record): bool =>
-        $record?->estado?->isFinal()
-    )
+                           ->disabled(function (?Lead $record): bool {
+                                // Si $record es null o estado es null, devolvemos false
+                                return $record?->estado?->isFinal() ?? false;
+                            })
                         ->helperText(fn (?Lead $record): ?string =>
                             (! is_null($record?->cliente_id))
                                 ? 'No puedes cambiar el estado, ya se creó el cliente y la venta del mismo.'

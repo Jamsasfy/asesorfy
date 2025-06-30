@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\ClienteSuscripcionEstadoEnum;
 use App\Filament\Resources\VentaResource\Pages;
 use App\Filament\Resources\VentaResource\RelationManagers;
 use App\Models\Servicio;
@@ -29,6 +30,7 @@ use Illuminate\Support\Facades\Auth;
 use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 use App\Services\ConfiguracionService; // ¡Añade esta línea!
 use App\Enums\ServicioTipoEnum; // <-- Esta es la línea que debe estar aquí
+use App\Models\ClienteSuscripcion;
 use Filament\Tables\Enums\FiltersLayout;
 use Malzariey\FilamentDaterangepickerFilter\Filters\DateRangeFilter;
 use Carbon\Carbon;
@@ -118,6 +120,7 @@ public static function form(Form $form): Form
                             ->searchable()
                             ->preload()
                             ->columnSpan(1)
+                            ->reactive()  // <- obligamos a que refresque los dependientes                            
                             ->suffixIcon('heroicon-m-user'),
                         
                         Select::make('lead_id')
@@ -173,24 +176,47 @@ public static function form(Form $form): Form
                                 self::updateTotals($get, $set);
                             })
                             ->schema([
-                                Select::make('servicio_id')
-                                    ->label('Servicio')
-                                    ->relationship('servicio', 'nombre')
-                                    ->required()
-                                    ->searchable()
-                                    ->preload()
-                                    ->distinct()
-                                    ->disableOptionsWhenSelectedInSiblingRepeaterItems()
-                                    ->live()
-                                    ->columnSpan(2)
-                                    ->afterStateUpdated(function (Get $get, Set $set, ?int $state) {
-                                        if ($state && $servicio = Servicio::find($state)) {
-                                            $set('precio_unitario', $servicio->precio_base);
-                                        } else {
-                                            $set('precio_unitario', 0);
-                                        }
-                                        self::updateTotals($get, $set);
-                                    }),
+                      Select::make('servicio_id')
+    ->label('Servicio')
+    ->relationship(
+        'servicio',
+        'nombre',
+        function (Builder $query, Get $get) {
+            $clienteId = $get('../../cliente_id');
+            if (! $clienteId) {
+                return;
+            }
+
+            // ¿Tiene YA alguna suscripción principal activa o pendiente?
+            $tienePrincipal = ClienteSuscripcion::query()
+                ->where('cliente_id', $clienteId)
+                ->where('es_tarifa_principal', true)
+                ->whereIn('estado', [
+                    ClienteSuscripcionEstadoEnum::ACTIVA->value,
+                    ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION->value,
+                ])
+                ->exists();
+
+            if ($tienePrincipal) {
+                // Oculta **todos** los servicios que sean tarifa principal
+                $query->where('es_tarifa_principal', false);
+            }
+        }
+    )
+    ->required()
+    ->searchable()
+    ->preload()
+    ->distinct()
+    ->live()
+    ->columnSpan(2)
+    ->afterStateUpdated(function (Get $get, Set $set, ?int $state) {
+        if ($state && $servicio = Servicio::find($state)) {
+            $set('precio_unitario', $servicio->precio_base);
+        } else {
+            $set('precio_unitario', 0);
+        }
+        self::updateTotals($get, $set);
+    }),
 
                                 TextInput::make('cantidad')
                                     ->label('Cantidad')
