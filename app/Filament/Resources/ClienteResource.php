@@ -41,8 +41,7 @@ use Illuminate\Support\HtmlString;
 use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 use Filament\Infolists\Components\Grid;
 use Filament\Infolists\Components\Tabs;
-use App\Enums\ServicioTipoEnum;
-use App\Models\Servicio;
+use App\Enums\ClienteEstadoEnum;
 
 
 
@@ -202,7 +201,7 @@ class ClienteResource extends Resource implements HasShieldPermissions
                     TextInput::make('iban_asesorfy')
                     ->label('IBAN AsesorFy')
                     ->rules(['nullable', new ValidIban])                    
-                    ->required(fn ($get) => $get('estado') === 'activo')                   
+                    ->required(fn ($get) => $get('estado') === ClienteEstadoEnum::ACTIVO->value)                  
                     ->placeholder('ES12 3456 7890 1234 5678 9012')
                     ->suffixIcon('heroicon-m-credit-card')
                     ->maxLength(34),
@@ -210,7 +209,7 @@ class ClienteResource extends Resource implements HasShieldPermissions
                     TextInput::make('iban_impuestos')
                         ->label('IBAN para impuestos')
                         ->rules(['nullable', new ValidIban])
-                        ->required(fn ($get) => $get('estado') === 'activo')                       
+                        ->required(fn ($get) => $get('estado') === ClienteEstadoEnum::ACTIVO->value)                  
                     ->placeholder('ES12 3456 7890 1234 5678 9012')
                         ->suffixIcon('heroicon-m-currency-euro')
                         ->maxLength(34),
@@ -250,16 +249,8 @@ class ClienteResource extends Resource implements HasShieldPermissions
                 ->schema([
                     Select::make('estado')
                         ->label('Estado del cliente')
-                        ->options([
-                            'pendiente' => 'Pendiente',
-                            'activo' => 'Activo',
-                            'impagado' => 'Impagado',
-                            'bloqueado' => 'Bloqueado',
-                            'rescindido' => 'Rescindido',
-                            'baja' => 'Baja',
-                            'requiere_atencion' => 'Requiere atención',
-                        ])
-                        ->default('pendiente')
+                        ->options(ClienteEstadoEnum::class) // <-- CAMBIO AQUÍ
+                        ->default(ClienteEstadoEnum::PENDIENTE)
                         ->required()
                         ->live()
                         ->suffixIcon('heroicon-m-information-circle')
@@ -331,16 +322,13 @@ class ClienteResource extends Resource implements HasShieldPermissions
                         TextEntry::make('estado')
                         ->label(new HtmlString('<span class="font-semibold">Estado</span>'))                            
                             ->badge()
-                            ->color(fn (string $state): string => match ($state) {
-                                'pendiente' => 'warning',
-                                'activo' => 'success',
-                                'impagado' => 'danger',
-                                'bloqueado' => 'gray',
-                                'rescindido' => 'danger',
-                                'baja' => 'gray',
-                                'requiere_atencion' => 'info',
+                            ->color(fn (ClienteEstadoEnum $state): string => match ($state) { // <-- CAMBIO AQUÍ
+                                ClienteEstadoEnum::PENDIENTE, ClienteEstadoEnum::PENDIENTE_ASIGNACION => 'warning',
+                                ClienteEstadoEnum::ACTIVO => 'success',
+                                ClienteEstadoEnum::IMPAGADO, ClienteEstadoEnum::RESCINDIDO => 'danger',
+                                ClienteEstadoEnum::REQUIERE_ATENCION => 'info',
                                 default => 'gray',
-                            }),   
+                            }),
                         TextEntry::make('asesor.name')
                         ->label(new HtmlString('<span class="font-semibold">Asesor</span>'))
                         ->badge()
@@ -427,16 +415,14 @@ class ClienteResource extends Resource implements HasShieldPermissions
                                 TextEntry::make('estado')                           
                                 ->label('Estado')
                                 ->badge()
-                                ->color(fn (string $state): string => match ($state) {
-                                    'pendiente' => 'warning',
-                                    'activo' => 'success',
-                                    'impagado' => 'danger',
-                                    'bloqueado' => 'gray',
-                                    'rescindido' => 'danger',
-                                    'baja' => 'gray',
-                                    'requiere_atencion' => 'info',
+                                 ->color(fn (ClienteEstadoEnum $state): string => match ($state) { // <-- CAMBIO 1: Acepta el Enum
+                                    // CAMBIO 2: Compara con los casos del Enum, no con texto
+                                    ClienteEstadoEnum::PENDIENTE, ClienteEstadoEnum::PENDIENTE_ASIGNACION => 'warning',
+                                    ClienteEstadoEnum::ACTIVO => 'success',
+                                    ClienteEstadoEnum::IMPAGADO, ClienteEstadoEnum::RESCINDIDO => 'danger',
+                                    ClienteEstadoEnum::REQUIERE_ATENCION => 'info',
                                     default => 'gray',
-                                }),   
+                                }),
                                 TextEntry::make('fecha_alta')
                                 ->label('Alta servicio')
                                 ->copyable()
@@ -544,32 +530,36 @@ class ClienteResource extends Resource implements HasShieldPermissions
             TextColumn::make('estado')
                 ->label('Estado')
                 ->badge()
-                ->color(fn (string $state): string => match ($state) {
-                    'pendiente' => 'warning',
-                    'activo' => 'success',
-                    'impagado' => 'danger',
-                    'bloqueado' => 'gray',
-                    'rescindido' => 'danger',
-                    'baja' => 'gray',
-                    'requiere_atencion' => 'info',
+                ->color(fn (ClienteEstadoEnum $state): string => match ($state) { // <-- CAMBIO AQUÍ
+                    ClienteEstadoEnum::PENDIENTE, ClienteEstadoEnum::PENDIENTE_ASIGNACION => 'warning',
+                    ClienteEstadoEnum::ACTIVO => 'success',
+                    ClienteEstadoEnum::IMPAGADO, ClienteEstadoEnum::RESCINDIDO => 'danger',
+                    ClienteEstadoEnum::REQUIERE_ATENCION => 'info',
                     default => 'gray',
                 })
                 ->sortable(),
 
               // Nueva columna para la Tarifa Principal Activa (nombre del servicio)
              // Columna Modificada para la Tarifa Principal Activa
-            TextColumn::make('tarifa_principal_activa_con_precio') // <--- USA EL NUEVO ACCESOR
+           TextColumn::make('tarifa_principal_activa_con_precio')
                 ->label('Tarifa Principal')
                 ->placeholder('Ninguna')
-                ->badge() // La insignia se aplicará a toda la cadena "FYCA - 75,00 €"
-                ->color('success') // Puedes cambiar el color si lo deseas
-                ->tooltip(function ($record) { // $record es la instancia del modelo Cliente
+                ->badge()
+                ->color(function ($record): string {
+                    // Si el cliente tiene una tarifa principal activa...
+                    if ($record->tarifa_principal_activa) {
+                        return 'success'; // ...el color es verde.
+                    }
+                    // Si no la tiene...
+                    return 'warning'; // ...el color es naranja/amarillo.
+                })
+                ->tooltip(function ($record) {
                     if ($record->tarifa_principal_activa && $record->tarifa_principal_activa->servicio) {
                         return $record->tarifa_principal_activa->servicio->nombre;
                     }
-                    return null; // No mostrar tooltip si no hay servicio
+                    return null;
                 })
-                ->searchable(false) // La búsqueda en un accesor así es compleja, mejor deshabilitarla
+                ->searchable(false)
                 ->sortable(false),
 
             TextColumn::make('provincia')
@@ -621,15 +611,7 @@ class ClienteResource extends Resource implements HasShieldPermissions
             SelectFilter::make('estado')
                 ->label('Estado')
                 ->preload()
-                ->options([
-                    'pendiente' => 'Pendiente',
-                    'activo' => 'Activo',
-                    'impagado' => 'Impagado',
-                    'bloqueado' => 'Bloqueado',
-                    'rescindido' => 'Rescindido',
-                    'baja' => 'Baja',
-                    'requiere_atencion' => 'Requiere atención',
-                ])                
+                ->options(ClienteEstadoEnum::class) // <-- CAMBIO AQUÍ
                 ->searchable(),
             SelectFilter::make('tipo_cliente_id')
                 ->label('Tipo de cliente')

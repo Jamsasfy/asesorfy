@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use App\Enums\ClienteEstadoEnum;
+
 
 class Cliente extends Model
 {
@@ -41,7 +43,11 @@ class Cliente extends Model
        
     ];
 
-
+// Dentro de la clase Cliente
+protected $casts = [
+    'estado' => ClienteEstadoEnum::class,
+    // ... otros casts que ya tengas
+];
     public function user()
 {
     return $this->belongsTo(User::class);
@@ -105,91 +111,39 @@ public function documentosPolimorficos()
 }
 
 
- //accessor para ver el servicio que tiene activo y su precio
-
-  public function getTarifaPrincipalActivaAttribute(): ?VentaItem // O puedes devolver Servicio si lo prefieres
+  /**
+     * ACCESOR MEJORADO: Obtiene la suscripción de la tarifa principal activa.
+     * Busca directamente en la tabla `cliente_suscripciones` que es la fuente de la verdad.
+     */
+    protected function tarifaPrincipalActiva(): Attribute
     {
-        $hoy = now()->startOfDay(); // Para comparaciones de fechas
-
-        // Obtener la venta más reciente que contenga una tarifa principal activa
-        $ventaConTarifaActiva = $this->ventas()
-            ->whereHas('items.servicio', function ($query) {
-                $query->where('tipo', ServicioTipoEnum::RECURRENTE)
-                      ->where('es_tarifa_principal', true);
-            })
-            // Considerar la fecha de inicio del servicio del item o la fecha de venta.
-            // Esta parte puede necesitar ajuste según cómo uses VentaItem.fecha_inicio_servicio
-            ->where(function ($query) use ($hoy) {
-                $query->whereHas('items', function ($subQuery) use ($hoy) {
-                    // Si VentaItem.fecha_inicio_servicio es la que manda y está presente
-                    $subQuery->whereNotNull('fecha_inicio_servicio')
-                             ->where('fecha_inicio_servicio', '<=', $hoy);
-                })
-                // O si VentaItem.fecha_inicio_servicio es null, usamos Venta.fecha_venta
-                ->orWhereDoesntHave('items', function ($subQuery) {
-                     // Asegurarse que el item que no tiene fecha_inicio_servicio es el principal
-                    $subQuery->whereNotNull('fecha_inicio_servicio')
-                             ->whereHas('servicio', function ($sQuery) {
-                                 $sQuery->where('tipo', ServicioTipoEnum::RECURRENTE)
-                                        ->where('es_tarifa_principal', true);
-                             });
-                })
-                ->where('fecha_venta', '<=', $hoy); // La venta debe haber ocurrido ya
-            })
-            ->orderByDesc('fecha_venta') // La venta más reciente
-            ->orderByDesc('id')          // Desempate por si hay varias en la misma fecha
-            ->first();
-
-        if ($ventaConTarifaActiva) {
-            // Ahora, de esa venta, obtenemos el VentaItem específico de la tarifa principal
-            $itemTarifa = $ventaConTarifaActiva->items()
-                ->whereHas('servicio', function ($query) {
-                    $query->where('tipo', ServicioTipoEnum::RECURRENTE)
-                          ->where('es_tarifa_principal', true);
-                })
-                // Asegurarse de que este item específico esté activo según su propia fecha de inicio si la tiene
-                ->where(function ($query) use ($hoy) {
-                    $query->whereNull('fecha_inicio_servicio') // Si es null, se rige por fecha_venta (ya filtrada)
-                          ->orWhere('fecha_inicio_servicio', '<=', $hoy);
-                })
-                ->orderByDesc('id') // En caso de múltiples items principales en una venta (no debería pasar)
-                ->first();
-
-            return $itemTarifa; // Esto devuelve el VentaItem completo
-        }
-
-        return null;
+        return Attribute::make(
+            get: fn () => $this->suscripciones()
+                ->where('es_tarifa_principal', true)
+                ->where('estado', \App\Enums\ClienteSuscripcionEstadoEnum::ACTIVA)
+                ->first()
+        );
     }
 
-    // Podrías querer un accesor que devuelva solo el Servicio:
-    public function getServicioTarifaPrincipalActivaAttribute(): ?Servicio
-    {
-        return $this->tarifa_principal_activa?->servicio;
-    }
-
-    // Y otro para el precio acordado de esa tarifa:
-    public function getPrecioTarifaPrincipalActivaAttribute(): ?float // O string si usas decimal
-    {
-        return $this->tarifa_principal_activa?->precio_unitario;
-    }
-
-protected function tarifaPrincipalActivaConPrecio(): Attribute
+    /**
+     * ACCESOR MEJORADO: Devuelve el nombre del servicio y el precio formateado.
+     * Utiliza el accesor anterior que es mucho más rápido.
+     */
+    protected function tarifaPrincipalActivaConPrecio(): Attribute
     {
         return Attribute::make(
             get: function () {
-                $tarifaItem = $this->tarifa_principal_activa; // Esto llama a tu accesor existente
-
-                if ($tarifaItem && $tarifaItem->servicio) {
-                    $acronimo = $tarifaItem->servicio->acronimo; // Llama al accesor 'acronimo' en Servicio
-                    
-                    // Formatear el precio. Puedes ajustarlo a tus necesidades.
-                    // number_format(numero, decimales, separador_decimal, separador_miles)
-                    $precioFormateado = number_format($tarifaItem->precio_unitario, 2, ',', '.') . ' €';
-                    
+                // Llama al nuevo y eficiente accesor 'tarifaPrincipalActiva'
+                $suscripcionActiva = $this->tarifa_principal_activa; 
+    
+                if ($suscripcionActiva && $suscripcionActiva->servicio) {
+                    $acronimo = $suscripcionActiva->servicio->acronimo ?? $suscripcionActiva->servicio->nombre;
+                    $precioFormateado = number_format($suscripcionActiva->precio_acordado, 2, ',', '.') . ' €';
+    
                     return "{$acronimo} - {$precioFormateado}";
                 }
                 
-                return null; // O 'Ninguna', o lo que prefieras si no hay tarifa
+                return 'Sin tarifa principal';
             }
         );
     }

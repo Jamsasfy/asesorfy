@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Casts\Attribute; // Si usas accessors/mutators
 use App\Models\Cliente;
+use Illuminate\Database\Eloquent\Builder;
 use Carbon\Carbon;
 use Illuminate\Validation\ValidationException;
 
@@ -65,7 +66,10 @@ class Venta extends Model
     {
         return $this->hasMany(Proyecto::class);
     }
- 
+ public function suscripciones(): HasMany
+{
+    return $this->hasMany(ClienteSuscripcion::class, 'venta_origen_id');
+}
 
     // Opcional: Accessor para obtener el tipo de venta (puntual, recurrente, mixta)
     // basado en los tipos de servicios de sus items.
@@ -88,100 +92,60 @@ class Venta extends Model
          );
     }
 
-     /**
-     * Método para recalcular y guardar el importe total en la Venta
-     * y para crear los Proyectos de activación asociados.
+      /**
+     * Método para recalcular y guardar el importe total en la Venta.
      */
-   public function updateTotal(): void
+    public function updateTotal(): void
     {
-        // === 1. Calcular y guardar el importe total de la Venta (CON DESCUENTO, SIN IVA) ===
-        $this->loadMissing('items'); // Asegura que la relación 'items' esté cargada
-        $newTotal = $this->items->sum(function($item) {
-            // Suma 'subtotal_aplicado' (que ya incluye el descuento y es sin IVA)
-            return (float)($item->subtotal_aplicado ?? $item->subtotal ?? 0); 
-        });
+        // Asegura que la relación 'items' esté cargada para sumar
+        $this->loadMissing('items'); 
+        
+        // Suma el campo 'subtotal_aplicado' de cada item, que ya tiene los descuentos.
+        $newTotal = $this->items->sum('subtotal_aplicado'); 
+
         $this->importe_total = $newTotal;
-        $this->save(); // Guarda el modelo Venta con el nuevo total
 
-        // === 2. Crear/Actualizar Proyectos de Activación (Para ítems que los requieran) ===
-        $this->items->each(function($item) {
-            // Precargar el servicio para acceder a su tipo y si requiere proyecto.
-            $item->loadMissing('servicio');
-
-            // Solo si el item tiene un servicio que 'requiere_proyecto_activacion'
-            // Este servicio es el que DISPARA la creación de un proyecto (generalmente de tipo ÚNICO)
-            if ($item->servicio && $item->servicio->requiere_proyecto_activacion) { 
-                // updateOrCreate para crear el proyecto si no existe o actualizarlo si ya existe
-                $proyecto = Proyecto::updateOrCreate(
-                    ['venta_item_id' => $item->id], // Clave única para encontrar el proyecto
-                    [
-                        'nombre' => sprintf(
-                            '%s (%s)',
-                            $item->servicio->nombre,
-                            $this->cliente->dni_cif ?? '-'
-                        ),
-                        'cliente_id' => $this->cliente_id,
-                        'venta_id' => $this->id, // Vincular a esta venta
-                        'servicio_id' => $item->servicio_id, // Vincular al servicio proyectable
-                        'user_id' => null, // Asignar al comercial de la venta por defecto
-                        'estado' => ProyectoEstadoEnum::Pendiente->value, // Estado inicial del proyecto
-                        'descripcion' => "Proyecto generado por la venta {$this->id} para el servicio '{$item->servicio->nombre}'.",
-                        // Otros campos del proyecto (fechas estimadas, etc.) si los tienes
-                    ]
-                );
-            }
-        });
-
-        // Este método checkAndActivateSubscriptions() estará VACÍO POR AHORA, pero existe.
-        // Lo rellenaremos cuando estemos listos para la activación de suscripciones.
-        // La llamada a this->checkAndActivateSubscriptions() se añade en el hook 'updated' del modelo Proyecto.
+        // Usamos saveQuietly() para guardar el cambio sin disparar más eventos 'updated'
+        // y así evitar posibles bucles infinitos.
+        $this->saveQuietly();
     }
-
     /**
      * Este método es llamado por el modelo Proyecto cuando se finaliza.
     
      */
-    public function checkAndActivateSubscriptions(): void
-    {
-       
-        // Obtener los items de esta venta que sean tarifas principales y recurrentes
+   public function checkAndActivateSubscriptions(): void
+{
+    // Obtener los items de esta venta cuyo SERVICIO sea tarifa principal y recurrente
     $ventaItems = $this->items()
-        ->where('es_tarifa_principal', true)
-        ->whereHas('servicio', function ($query) {
-            $query->where('tipo', ServicioTipoEnum::RECURRENTE);
+        ->whereHas('servicio', function (Builder $query) {
+            $query->where('tipo', \App\Enums\ServicioTipoEnum::RECURRENTE)
+                  ->where('es_tarifa_principal', true); // <-- Condición movida aquí dentro
         })
         ->get();
 
+    // El resto de la lógica no necesita cambios...
     foreach ($ventaItems as $item) {
-        // Buscar la suscripción pendiente para este cliente + servicio + venta
         $suscripcion = ClienteSuscripcion::where('cliente_id', $this->cliente_id)
             ->where('servicio_id', $item->servicio_id)
             ->where('venta_origen_id', $this->id)
-            ->where('estado', ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION)
+            ->where('estado', \App\Enums\ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION)
             ->first();
 
         if (! $suscripcion) {
-            continue; // No hay suscripción pendiente para este item
+            continue;
         }
 
-        // Verificar si aún hay proyectos activos relacionados a esta venta
         $proyectosIncompletos = $this->proyectos()
-            ->whereNot('estado', ProyectoEstadoEnum::Finalizado)
+            ->whereNot('estado', \App\Enums\ProyectoEstadoEnum::Finalizado)
             ->exists();
 
         if (! $proyectosIncompletos) {
-            // Si todos los proyectos están finalizados, activar la suscripción
-            $suscripcion->estado = ClienteSuscripcionEstadoEnum::ACTIVA;
+            $suscripcion->estado = \App\Enums\ClienteSuscripcionEstadoEnum::ACTIVA;
             $suscripcion->fecha_inicio = now();
             $suscripcion->save();
-
-            // Opcional: log o notificación
-            // Log::info("Suscripción activada automáticamente para el cliente ID {$this->cliente_id} y servicio ID {$item->servicio_id}");
         }
     }
-
-    
-    }
+}
 
      
     
@@ -237,106 +201,86 @@ class Venta extends Model
     }
 
 
-public function crearSuscripcionesDesdeItems(): void
-{
-    // 1) Precargamos items y sus servicios
-    $this->loadMissing(['items.servicio']);
 
-    // 2) ¿Esta venta incluye algún servicio que requiera proyecto?
-    $ventaRequiereProyecto = $this->items->contains(fn ($item) =>
-        $item->servicio?->requiere_proyecto_activacion
-    );
+/**
+     * Orquesta la creación de proyectos y suscripciones después de que una venta
+     * se haya guardado completamente (incluyendo sus items).
+     */
+    public function processSaleAfterCreation(): void
+    {
+        $this->loadMissing('items.servicio', 'cliente');
 
-    foreach ($this->items as $item) {
-        $servicio = $item->servicio;
-        if (! $servicio) {
-            continue;
-        }
+        $ventaRequiereProyecto = $this->items->contains(fn ($item) =>
+            $item->servicio?->requiere_proyecto_activacion
+        );
 
-        $isRec  = $servicio->tipo->value === ServicioTipoEnum::RECURRENTE->value;
-        $isPri  = $servicio->es_tarifa_principal;
-
-        // 3) Recuperar o crear la suscripción
-        $sus = ClienteSuscripcion::firstOrNew([
-            'cliente_id'  => $this->cliente_id,
-            'servicio_id' => $servicio->id,
-        ]);
-
-        // 4) Cantidad: acumulamos solo si ya existía y es recurrente no-principal
-        if ($sus->exists && $isRec && ! $isPri) {
-            $sus->cantidad += $item->cantidad;
-        } else {
-            $sus->cantidad = $item->cantidad;
-        }
-
-        // 5) Campos comunes
-        $sus->precio_acordado        = $item->precio_unitario_aplicado;
-        $sus->descuento_tipo         = $item->descuento_tipo;
-        $sus->descuento_valor        = $item->descuento_valor;
-        $sus->descuento_descripcion  = $item->observaciones_descuento;
-        $sus->descuento_valido_hasta = $item->descuento_valido_hasta;
-        $sus->observaciones          = $item->observaciones_item;
-        $sus->ciclo_facturacion      = $servicio->ciclo_facturacion;
-
-        // 6) Estado y fechas
-        if ($isRec && $isPri && $ventaRequiereProyecto) {
-            // Caso CLAVE: recurrente-principal y la venta tiene un ítem con proyecto
-            $sus->estado                   = ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION;
-            $sus->fecha_inicio             = null;
-            $sus->proxima_fecha_facturacion = null;
-        } elseif (! $isRec) {
-            // Servicio único → activa ya
-            $sus->estado       = ClienteSuscripcionEstadoEnum::ACTIVA;
-            $sus->fecha_inicio = now();
-            $sus->fecha_fin    = now();
-        } else {
-            // Recurrente (no-principal, o principal cuando no hay proyecto)
-            $sus->estado                   = ClienteSuscripcionEstadoEnum::ACTIVA;
-            $sus->fecha_inicio             = $item->fecha_inicio_servicio ?? now();
-            $sus->proxima_fecha_facturacion = null;
-        }
-
-        // 7) Asegurar tarifa principal única
-        if ($isPri && $sus->estado === ClienteSuscripcionEstadoEnum::ACTIVA) {
-            // Desmarcar cualquier otra
-            ClienteSuscripcion::where('cliente_id', $this->cliente_id)
-                ->where('es_tarifa_principal', true)
-                ->update(['es_tarifa_principal' => false]);
-            $sus->es_tarifa_principal = true;
-        }
-
-        // 8) Guardar
-        $sus->save();
-    }
-}
-
-protected static function booted()
-{
-    static::creating(function (Venta $venta) {
-        foreach ($venta->items as $item) {
+        foreach ($this->items as $item) {
             $servicio = $item->servicio;
-            if (
-                $servicio
-                && $servicio->tipo->value === ServicioTipoEnum::RECURRENTE->value
-                && $servicio->es_tarifa_principal
-                && ClienteSuscripcion::where([
-                    ['cliente_id', $venta->cliente_id],
-                    ['servicio_id', $servicio->id],
-                    ['es_tarifa_principal', true],
-                ])
-                ->whereIn('estado', [
-                    ClienteSuscripcionEstadoEnum::ACTIVA->value,
-                    ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION->value,
-                ])
-                ->exists()
-            ) {
-                throw ValidationException::withMessages([
-                    'items' => "El cliente ya tiene activa o pendiente la suscripción “{$servicio->nombre}”.",
+            if (!$servicio) continue;
+
+            // --- Lógica de Proyectos (Sin cambios) ---
+            if ($servicio->requiere_proyecto_activacion) {
+                Proyecto::create([
+                    'nombre'          => "{$servicio->nombre} ({$this->cliente->razon_social})",
+                    'cliente_id'      => $this->cliente_id,
+                    'venta_id'        => $this->id,
+                    'venta_item_id'   => $item->id,
+                    'servicio_id'     => $servicio->id,
+                    'estado'          => \App\Enums\ProyectoEstadoEnum::Pendiente,
+                    'descripcion'     => "Proyecto generado por la venta #{$this->id} para el servicio '{$servicio->nombre}'.",
+                ]);
+            }
+
+            // --- Lógica de Suscripciones (CORREGIDA) ---
+            // AHORA CREA SUSCRIPCIÓN PARA TODOS LOS TIPOS DE SERVICIO
+            
+            $estadoInicial = null;
+            $fechaInicio = null;
+            $fechaFin = null;
+
+            if ($servicio->tipo === ServicioTipoEnum::UNICO) {
+                // Para servicios únicos, la suscripción se crea activa y se cierra al instante.
+                // Esto sirve para registrarlo y poder facturarlo.
+                $estadoInicial = ClienteSuscripcionEstadoEnum::ACTIVA;
+                $fechaInicio = now();
+                $fechaFin = now(); // El servicio empieza y termina hoy.
+
+            } elseif ($servicio->tipo === ServicioTipoEnum::RECURRENTE) {
+                // Para servicios recurrentes, aplicamos la lógica de activación por proyecto.
+                $estadoInicial = $ventaRequiereProyecto
+                    ? ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION
+                    : ClienteSuscripcionEstadoEnum::ACTIVA;
+
+                $fechaInicio = $ventaRequiereProyecto
+                    ? null
+                    : ($item->fecha_inicio_servicio ?? now());
+                
+                $fechaFin = null; // Los recurrentes no tienen fecha de fin por defecto.
+            }
+
+            // Creamos el registro solo si hemos determinado un estado
+            if ($estadoInicial) {
+                ClienteSuscripcion::create([
+                    'cliente_id'             => $this->cliente_id,
+                    'servicio_id'            => $item->servicio_id,
+                    'venta_origen_id'        => $this->id,
+                    'es_tarifa_principal'    => $servicio->es_tarifa_principal,
+                    'precio_acordado'        => $item->precio_unitario_aplicado,
+                    'cantidad'               => $item->cantidad,
+                    'fecha_inicio'           => $fechaInicio,
+                    'fecha_fin'              => $fechaFin, // <-- Se añade la fecha de fin
+                    'estado'                 => $estadoInicial,
+                    'ciclo_facturacion'      => 'mensual',
+                    'descuento_tipo'         => $item->descuento_tipo,
+                    'descuento_valor'        => $item->descuento_valor,
+                    'descuento_descripcion'  => $item->observaciones_descuento,
+                    'descuento_valido_hasta' => $item->descuento_valido_hasta,
+                    'observaciones'          => $item->observaciones_item,
                 ]);
             }
         }
-    });
-}
+    }
+
 
   
 

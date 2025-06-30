@@ -1,7 +1,14 @@
 <?php
 
 namespace App\Providers;
+
+use App\Models\Cliente;
+use App\Models\ClienteSuscripcion;
 use Illuminate\Support\Facades\Schema;
+use App\Models\Venta;                 // <-- Añadir
+use App\Observers\VentaObserver;      // <-- Añadir
+use App\Models\Proyecto;              // <-- Añadir
+use App\Observers\ProyectoObserver;   // <-- Añadir
 
 
 use Illuminate\Support\ServiceProvider;
@@ -26,5 +33,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Schema::defaultStringLength(191);
+        Venta::observe(VentaObserver::class);       // <-- Añadir esta línea
+        Proyecto::observe(ProyectoObserver::class); // <-- Añadir esta línea
+        ClienteSuscripcion::observe(\App\Observers\ClienteSuscripcionObserver::class);
+        Cliente::observe(\App\Observers\ClienteObserver::class);
     }
 }

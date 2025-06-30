@@ -65,7 +65,8 @@ class AdminPanelProvider extends PanelProvider
                 ClientesPorMesChart::class, 
             ])
 
-          
+          ->databaseNotifications() // <-- AÑADE ESTA LÍNEA
+            ->databaseNotificationsPolling('30s') // <-- (Opcional) Actualiza notificaciones cada 30s   
 
 
             ->middleware([
