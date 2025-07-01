@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ClienteSuscripcionEstadoEnum;
-use App\Enums\ProyectoEstadoEnum;
+
 use App\Enums\ServicioTipoEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -12,8 +12,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Casts\Attribute; // Si usas accessors/mutators
 use App\Models\Cliente;
 use Illuminate\Database\Eloquent\Builder;
-use Carbon\Carbon;
-use Illuminate\Validation\ValidationException;
+use App\Models\User;
+use Filament\Notifications\Notification;
+
 
 class Venta extends Model
 {
@@ -220,7 +221,7 @@ class Venta extends Model
 
             // --- Lógica de Proyectos (Sin cambios) ---
             if ($servicio->requiere_proyecto_activacion) {
-                Proyecto::create([
+                $proyecto = Proyecto::create([
                     'nombre'          => "{$servicio->nombre} ({$this->cliente->razon_social})",
                     'cliente_id'      => $this->cliente_id,
                     'venta_id'        => $this->id,
@@ -229,9 +230,26 @@ class Venta extends Model
                     'estado'          => \App\Enums\ProyectoEstadoEnum::Pendiente,
                     'descripcion'     => "Proyecto generado por la venta #{$this->id} para el servicio '{$servicio->nombre}'.",
                 ]);
+
+                 // 2. Preparamos y enviamos la notificación a los coordinadores
+                $coordinadores = \App\Models\User::whereHas('roles', fn ($q) => $q->where('name', 'coordinador'))->get();
+
+                if ($coordinadores->isNotEmpty()) {
+                    Notification::make()
+                        ->title('Nuevo Proyecto Pendiente')
+                        ->body("Proyecto '{$proyecto->nombre}' pendiente asignación.")
+                        ->icon('heroicon-o-briefcase') // Icono de proyecto
+                        ->color('info') // Color azul para notificaciones informativas
+                        ->actions([
+                            \Filament\Notifications\Actions\Action::make('view')
+                                ->label('Ver Proyecto')
+                                ->url(\App\Filament\Resources\ProyectoResource::getUrl('view', ['record' => $proyecto])),
+                        ])
+                        ->sendToDatabase($coordinadores);
+                }
             }
 
-            // --- Lógica de Suscripciones (CORREGIDA) ---
+           
             // AHORA CREA SUSCRIPCIÓN PARA TODOS LOS TIPOS DE SERVICIO
             
             $estadoInicial = null;

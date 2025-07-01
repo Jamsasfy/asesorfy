@@ -40,6 +40,9 @@ use Filament\Forms\Set; // <<< ASEGÚRATE DE QUE ESTA LÍNEA ESTÉ AQUÍ
 use Filament\Support\Enums\Alignment;
 use Illuminate\Support\Facades\Log; // Para Log::error
 use Filament\Forms\Components\Toggle; // Para el Toggle en los formularios de las acciones
+use App\Enums\ClienteSuscripcionEstadoEnum;
+use Filament\Infolists\Components\ViewEntry;
+
 use Illuminate\Database\Eloquent\Model;
 use Filament\Tables\Filters\TrashedFilter;
 use Illuminate\Database\Eloquent\Collection;
@@ -475,6 +478,14 @@ class ProyectoResource extends Resource implements HasShieldPermissions
                                 ->weight('bold')
                                 ->icon('heroicon-m-arrow-top-right-on-square')                 
                                 ->columnSpanFull(), // Ocupa todo el ancho
+                                    // ▼▼▼ CAMPO AÑADIDO ▼▼▼
+                    TextEntry::make('venta.lead.demandado')
+                            ->label(new HtmlString('<span class="font-semibold">Demandado del Lead</span>'))
+                            ->copyable()
+                            ->weight('bold')
+                            ->color('primary')
+                            ->placeholder('No informado') // Se mostrará si el campo está vacío
+                            ->columnSpanFull(),              
     
                 ])
                 ->columns(3)
@@ -586,17 +597,18 @@ class ProyectoResource extends Resource implements HasShieldPermissions
                                         })
                                 ),
 
-                       
-                    TextEntry::make('estado_servicios_recurrentes_venta_placeholder') 
-                                ->label(new HtmlString('<span class="font-semibold">Estado de Servicios Recurrentes en esta Venta</span>'))
-                                ->default('Las suscripciones se mostrará aquí una vez implementada la lógica.') // Mensaje claro
-                               
-                                ->icon('heroicon-o-exclamation-triangle') // Icono de advertencia
-                                ->color('gray'),
+                    ViewEntry::make('resumen_venta_pendientes')
+                   //  ->heading('Proyectos o servicios dependientes')
+            ->view('filament.infolists.components.resumen-venta-pendientes')
+            ->columnSpanFull(),
+
+                  
                   ])
                 
                 ->columns(3)
                 ->columnSpan(1),
+
+               
 
             // Agenda
             InfoSection::make('Agenda & Gestión')
