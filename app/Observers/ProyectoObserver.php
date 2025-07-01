@@ -4,29 +4,56 @@ namespace App\Observers;
 
 use App\Enums\ClienteSuscripcionEstadoEnum;
 use App\Enums\ProyectoEstadoEnum;
+use App\Filament\Resources\ProyectoResource;
 use App\Models\Proyecto;
+use App\Models\User;
+use Filament\Notifications\Notification;
+use Filament\Notifications\Actions\Action; // <-- Importante añadir este 'use'
+
 
 class ProyectoObserver
 {
+    /**
+     * Se ejecuta DESPUÉS de que un proyecto se ha actualizado.
+     */
     public function updated(Proyecto $proyecto): void
     {
-        // Si el proyecto tiene una venta asociada...
-        if ($proyecto->venta) {
+        // --- LÓGICA 1: Notificar al nuevo asesor asignado ---
+        // Si el campo 'user_id' (el asesor) acaba de cambiar y no es nulo...
+        if ($proyecto->wasChanged('user_id') && !is_null($proyecto->user_id)) {
             
-            // Escenario 1: El proyecto se ha FINALIZADO
+            $asesorAsignado = User::find($proyecto->user_id);
+
+            if ($asesorAsignado) {
+                // Y le enviamos la notificación
+                Notification::make()
+                    ->title('Te han asignado un nuevo proyecto')
+                    ->body("Se te ha asignado el proyecto: '{$proyecto->nombre}'.")
+                    ->icon('heroicon-o-briefcase')                   
+                    ->actions([
+                        Action::make('view')
+                            ->label('Ver Proyecto')
+                            ->url(ProyectoResource::getUrl('view', ['record' => $proyecto]))
+                            ->markAsRead(), // Opcional: marca la notificación como leída al hacer clic
+                           
+                    ])
+                    ->sendToDatabase($asesorAsignado);
+            }
+        }
+
+        // --- LÓGICA 2: Activar o cancelar suscripciones ---
+        if ($proyecto->venta) {
+            // Escenario A: El proyecto se ha FINALIZADO
             if ($proyecto->wasChanged('estado') && $proyecto->estado === ProyectoEstadoEnum::Finalizado) {
-                // Intentamos activar las suscripciones. El método interno ya comprueba si hay otros proyectos pendientes.
                 $proyecto->venta->checkAndActivateSubscriptions();
             }
 
-            // Escenario 2: El proyecto se ha CANCELADO
-            if ($proyecto->wasChanged('estado') && $proyecto->estado === ProyectoEstadoEnum::Cancelado) { // Asumiendo que tienes este estado en ProyectoEstadoEnum
-                // Buscamos todas las suscripciones de esa venta que aún estén pendientes...
+            // Escenario B: El proyecto se ha CANCELADO
+            if ($proyecto->wasChanged('estado') && $proyecto->estado === ProyectoEstadoEnum::Cancelado) {
                 $suscripcionesPendientes = $proyecto->venta->suscripciones()
                     ->where('estado', ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION)
                     ->get();
                 
-                // ...y las cancelamos también.
                 foreach ($suscripcionesPendientes as $suscripcion) {
                     $suscripcion->update(['estado' => ClienteSuscripcionEstadoEnum::CANCELADA]);
                 }

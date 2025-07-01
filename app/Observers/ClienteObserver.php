@@ -6,12 +6,13 @@ use App\Enums\ClienteEstadoEnum;
 use App\Models\Cliente;
 use App\Models\User;
 use Filament\Notifications\Notification;
+use Filament\Notifications\Actions\Action; // <-- Importante añadir este 'use'
+use App\Filament\Resources\ClienteResource; // <-- Y este también
 
 class ClienteObserver
 {
     /**
      * Se ejecuta ANTES de guardar los cambios en la base de datos.
-     * Aquí se modifican los atributos para que se guarden en una sola operación.
      */
     public function saving(Cliente $cliente): void
     {
@@ -25,7 +26,6 @@ class ClienteObserver
 
     /**
      * Se ejecuta DESPUÉS de que los cambios se han guardado.
-     * Lo usamos solo para los "efectos secundarios" como las notificaciones.
      */
     public function updated(Cliente $cliente): void
     {
@@ -38,6 +38,15 @@ class ClienteObserver
                 Notification::make()
                     ->title('¡Nuevo cliente asignado!')
                     ->body("Se te ha asignado el cliente '{$cliente->razon_social}'.")
+                    ->icon('heroicon-o-user-group')
+                    // ▼▼▼ BLOQUE AÑADIDO ▼▼▼
+                    ->actions([
+                        Action::make('view')
+                            ->label('Ver Cliente')
+                            ->url(ClienteResource::getUrl('view', ['record' => $cliente]))
+                            ->markAsRead()
+                            ->close(),
+                    ])
                     ->sendToDatabase($asesorAsignado);
             }
         }

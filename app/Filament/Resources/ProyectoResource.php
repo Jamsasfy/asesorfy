@@ -54,9 +54,11 @@ class ProyectoResource extends Resource implements HasShieldPermissions
     protected static ?string $model = Proyecto::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-briefcase'; // Icono de maletín
-    protected static ?string $navigationGroup = 'Gestión PROYECTOS'; // Nuevo grupo de navegación
+    protected static ?string $navigationGroup = null; // Nuevo grupo de navegación
     protected static ?string $modelLabel = 'Proyecto';
     protected static ?string $pluralModelLabel = 'Proyectos';
+
+
 
       public static function getPermissionPrefixes(): array
     {
@@ -73,6 +75,42 @@ class ProyectoResource extends Resource implements HasShieldPermissions
           
         ];
     }
+
+     // ** Nuevo método para la agrupación dinámica **
+    public static function getNavigationGroup(): ?string
+    {
+        // Si el usuario es un asesor, asigna el grupo "Mi espacio de trabajo"
+        if (auth()->user()?->hasRole('asesor')) {
+            return 'Mi espacio de trabajo';
+
+        }
+
+        // Si no es asesor (ej. super_admin), retorna null para que no se agrupe
+        // o puedes devolver un nombre de grupo diferente para ellos si lo deseas.
+        // Ejemplo: return 'Gestión General';
+        return 'Gestión PROYECTOS';
+    }
+public static function getNavigationLabel(): string
+    {
+        return auth()->user()?->hasRole('asesor') ? 'Mis Proyectos' : 'Proyectos';
+    }
+
+     // ** NUEVO CAMBIO: Método para el contenido del badge **
+    public static function getNavigationBadge(): ?string
+    {
+        // Reutilizamos la misma lógica de consulta que filtra por rol
+        $query = static::getEloquentQuery();
+        return (string) $query->count(); // Aseguramos que retorne un string
+    }
+
+    // ** NUEVO CAMBIO: Método para el color del badge **
+    public static function getNavigationBadgeColor(): string|array|null
+    {        
+        return 'warning';
+    }
+
+
+
   public static function getEloquentQuery(): Builder
     {
         /** @var \App\Models\User|null $user */
@@ -282,7 +320,16 @@ class ProyectoResource extends Resource implements HasShieldPermissions
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: false) // Visible por defecto
                     ->placeholder('Sin agendar'), // Texto si es null
+                TextColumn::make('created_at')
+                    ->label('Creado')
+                    ->dateTime('d/m/Y H:i')
+                    ->sortable(),
 
+                TextColumn::make('updated_at')
+                    ->label('Actualizado')
+                    ->dateTime('d/m/Y H:i')
+                    ->sortable(),
+                   
                 TextColumn::make('fecha_finalizacion')
                     ->label('Finalizado el')
                     ->dateTime('d/m/Y H:i')
@@ -323,19 +370,23 @@ class ProyectoResource extends Resource implements HasShieldPermissions
          
             ->actions([
                 Tables\Actions\EditAction::make()
+                ->label('')
+                ->tooltip('Editar Proyecto')
                 ->openUrlInNewTab(),
                 Tables\Actions\ViewAction::make()
+                ->label('')
+                ->tooltip('Ver Proyecto')
                  ->openUrlInNewTab(),
 
 
 
                   // <<< AÑADIDO: Acción para Asignar Asesor
                Action::make('assign_assessor')
-                    ->label(fn (Proyecto $record): string => $record->user_id ? 'Cambiar Asesor' : 'Asignar Asesor')
+                    ->label('')
                     ->icon('heroicon-o-user-plus')
                     ->color(fn (Proyecto $record): string => $record->user_id ? 'primary' : 'warning')
                     ->visible(fn ($record) => auth()->user()?->can('assign_assessor_proyecto'))
-
+ ->tooltip(fn (Proyecto $record): string => $record->user_id ? 'Cambiar Asesor Asignado' : 'Asignar Asesor')
 
                     ->modalHeading('Asignar Asesor al Proyecto')
                     ->modalSubmitActionLabel('Asignar')
@@ -402,7 +453,8 @@ class ProyectoResource extends Resource implements HasShieldPermissions
                     }),
 
                      Action::make('unassign_assessor')
-                    ->label('Quitar Asesor')
+                    ->label('')
+                     ->tooltip('Desasignar Asesor') // Tooltip estático para desasignar
                     ->icon('heroicon-o-user-minus')
                     ->color('danger') // Color rojo
                    ->visible(fn (Proyecto $record): bool => 
@@ -597,10 +649,13 @@ class ProyectoResource extends Resource implements HasShieldPermissions
                                         })
                                 ),
 
-                    ViewEntry::make('resumen_venta_pendientes')
-                   //  ->heading('Proyectos o servicios dependientes')
-            ->view('filament.infolists.components.resumen-venta-pendientes')
-            ->columnSpanFull(),
+                   InfoSection::make('Proyectos o servicios dependientes de la misma venta') // <-- El título que querías
+                   ->description('Aquí se listan otros proyectos o servicios de la misma venta que requieren atención. Importante comunicar con el asesor asignado en otros proyectos para establecer el orden de las presentaciones en la administarción') // <-- ESTE ES EL SUBTÍTULO
+            ->schema([
+                ViewEntry::make('resumen_venta_pendientes')
+                    ->view('filament.infolists.components.resumen-venta-pendientes'),
+            ])
+            ->columnSpanFull(), // Esto hace que la sub-sección ocupe todo el ancho
 
                   
                   ])

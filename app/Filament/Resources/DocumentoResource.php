@@ -68,6 +68,25 @@ class DocumentoResource extends Resource implements HasShieldPermissions
         ];
     }
 
+    public static function getNavigationLabel(): string
+    {
+        return auth()->user()?->hasRole('asesor') ? 'Documentos de mis Clientes' : 'Documentos de Clientes';
+    }
+
+public static function getNavigationGroup(): ?string
+    {
+        // Si el usuario es un asesor, asigna el grupo "Mi espacio de trabajo"
+        if (auth()->user()?->hasRole('asesor')) {
+            return 'Mi espacio de trabajo';
+
+        }
+
+        // Si no es asesor (ej. super_admin), retorna null para que no se agrupe
+        // o puedes devolver un nombre de grupo diferente para ellos si lo deseas.
+        // Ejemplo: return 'Gestión General';
+        return 'Documentos y BBDD';
+    }
+
     public static function getEloquentQuery(): Builder
 {
     /** @var \App\Models\User|null $user */

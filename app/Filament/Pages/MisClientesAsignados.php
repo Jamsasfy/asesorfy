@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Enums\ClienteEstadoEnum;
 use App\Filament\Resources\ClienteResource;
 use Filament\Pages\Page;
 use App\Models\Cliente; // Asegúrate de importar tu modelo Cliente
@@ -26,7 +27,7 @@ class MisClientesAsignados extends Page implements Tables\Contracts\HasTable // 
     protected static ?string $navigationIcon = 'icon-cliente-asignado'; // Cambié a 'user-group', pero usa el que prefieras
     protected ?string $subheading = 'Clientes que tienes asignados como asesor' ; // Subtítulo opcional para la página
 
-
+ protected static ?string $navigationGroup = 'Mi espacio de trabajo';
     // Propiedades que definimos para la página
     protected static ?string $navigationLabel = 'Mis Clientes Asignados'; // Nombre en el menú
     protected static ?string $title = 'Mis Clientes Asignados'; // Título que se muestra en la página
@@ -121,18 +122,18 @@ class MisClientesAsignados extends Page implements Tables\Contracts\HasTable // 
                 ->sortable(),
 
             TextColumn::make('estado')
-                ->label('Estado')
-                ->badge()
-                ->color(fn (string $state): string => match ($state) {
-                    'pendiente' => 'warning',
-                    'activo' => 'success',
-                    'impagado' => 'danger',
-                    'bloqueado' => 'gray',
-                    'rescindido' => 'danger',
-                    'baja' => 'gray',
-                    'requiere_atencion' => 'info',
-                    default => 'gray',
-                })
+                    ->label('Estado')
+                    ->badge()
+                    // CAMBIO 1: La función ahora espera un objeto ClienteEstadoEnum
+                    ->color(fn (ClienteEstadoEnum $state): string => match ($state) { 
+                        // CAMBIO 2: Comparamos con los casos del Enum
+                        ClienteEstadoEnum::PENDIENTE, ClienteEstadoEnum::PENDIENTE_ASIGNACION => 'warning',
+                        ClienteEstadoEnum::ACTIVO => 'success',
+                        ClienteEstadoEnum::IMPAGADO, ClienteEstadoEnum::RESCINDIDO => 'danger',
+                        ClienteEstadoEnum::REQUIERE_ATENCION => 'info',
+                        ClienteEstadoEnum::BLOQUEADO, ClienteEstadoEnum::BAJA => 'gray',
+                        default => 'gray',
+                    })
                 ->sortable(),
 
             TextColumn::make('provincia')
