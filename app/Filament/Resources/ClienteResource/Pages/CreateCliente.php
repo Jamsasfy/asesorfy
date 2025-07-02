@@ -6,14 +6,10 @@ use App\Filament\Resources\ClienteResource;
 use App\Filament\Resources\VentaResource;
 use App\Models\Cliente;
 use App\Models\Lead;
-use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Database\Eloquent\Model;
-use Filament\Pages\Actions\CreateAction;
-use Filament\Pages\Actions\CancelAction;
-use Filament\Forms\Components\Hidden;
+
 
 
 
@@ -21,7 +17,126 @@ class CreateCliente extends CreateRecord
 {
     protected static string $resource = ClienteResource::class;
 
+
+
+
+ public ?string $leadId = null; // Variable para "recordar" el ID del Lead
+
+    /**
+     * Al cargar la página, capturamos el lead_id y comprobamos si ya existe el cliente.
+     */
+    public function mount(): void
+    {
+        // Guardamos el lead_id de la URL en nuestra variable.
+        $this->leadId = request()->query('lead_id');
+
+        // Si no nos llega un lead_id, detenemos la creación.
+        if (!$this->leadId) {
+            Notification::make()
+                ->title('Acceso no permitido')
+                ->body('Solo se pueden crear clientes a partir de un Lead convertido.')
+                ->danger()
+                ->send();
+            
+            // Redirigimos al listado de leads para que se inicie el proceso correctamente.
+            $this->redirect(\App\Filament\Resources\LeadResource::getUrl('index'));
+            return;
+        }
+
+        // Comprobamos si ya existe un cliente para este lead.
+        $existing = Cliente::where('lead_id', $this->leadId)->first();
+        if ($existing) {
+            Notification::make()
+                ->body('Este lead ya tiene un cliente. Creando la venta directamente.')
+                ->info()->send();
+
+            // Si ya existe, saltamos directamente a crear la venta.
+            $this->redirect(
+                VentaResource::getUrl('create', [
+                    'cliente_id' => $existing->getKey(),
+                    'lead_id'    => $this->leadId,
+                ])
+            );
+            return;
+        }
+        
+        // Si no existe, continuamos con la carga normal del formulario de creación.
+        parent::mount();
+    }
+
+    /**
+     * Después de guardar el nuevo cliente, lo vinculamos con su Lead de origen.
+     */
     protected function afterCreate(): void
+    {
+        if ($this->leadId) {
+            Lead::where('id', $this->leadId)
+                ->update(['cliente_id' => $this->record->id]);
+        }
+    }
+
+    /**
+     * Una vez creado el cliente, SIEMPRE redirigimos a crear su primera venta.
+     */
+    protected function getRedirectUrl(): string
+    {
+        return VentaResource::getUrl('create', [
+            'cliente_id' => $this->record->id,
+            'lead_id'    => $this->leadId, // Usamos la variable que guardamos en mount()
+        ]);
+    }
+
+    // El resto de tus métodos (handleRecordCreation, getCreatedNotification) se quedan como están.
+    // ... (pega aquí tus métodos handleRecordCreation y getCreatedNotification sin cambios)
+    protected function handleRecordCreation(array $data): Model
+    {
+        if (empty($data['razon_social']) && (empty($data['nombre']) || empty($data['apellidos']))) {
+            Notification::make()
+                ->title('❌ Falta información')
+                ->body('Rellena razón social o nombre+apellidos.')
+                ->danger()->persistent()->send();
+            $this->halt();
+            return new ($this->getModel())();
+        }
+        if (empty($data['razon_social'])) {
+            $data['razon_social'] = trim("{$data['nombre']} {$data['apellidos']}");
+        }
+        return parent::handleRecordCreation($data);
+    }
+    
+    protected function getCreatedNotification(): ?Notification
+    {
+        return Notification::make()
+            ->title('✅ Cliente creado correctamente')
+            ->body('Ahora, por favor, crea su primera venta.')
+            ->success()
+            ->icon('icon-customer')
+            ->persistent();
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*      protected function afterCreate(): void
     {
        // parent::afterCreate();
 
@@ -30,11 +145,9 @@ class CreateCliente extends CreateRecord
             Lead::where('id', $leadId)
                 ->update(['cliente_id' => $this->record->getKey()]);
         }
-    }
+    } 
 
-
-
-    
+  
 
     public function mount(): void
     {
@@ -67,30 +180,8 @@ class CreateCliente extends CreateRecord
 
      protected array $leadParams = [];
 
-   /*   protected function getRedirectUrl(): string
-    {
-        // Lógica previa para cuando creamos un cliente nuevo...
-        if (request()->query('next') === 'sale' && request()->has('lead_id')) {
-            return VentaResource::getUrl('create', [
-                'cliente_id' => $this->record->getKey(),
-                'lead_id'    => request()->query('lead_id'),
-            ]);
-        }
-
-        // Si no, a la vista de Cliente
-        return static::getResource()::getUrl('view', [
-            'record' => $this->record->getKey(),
-        ]);
-    }
- */
-
-   /**
-     * 2) Decide adónde ir tras crear:
-     *    - Si ya existe Cliente para este Lead, va a Crear Venta
-     *    - Si es la primera vez con next=sale, va a Crear Venta
-     *    - Si no, a la vista de Cliente
-     */
-    protected function getRedirectUrl(): string
+   
+     protected function getRedirectUrl(): string
 {
     $state  = $this->form->getState();
     $leadId = $state['lead_id'] ?? null;
@@ -117,7 +208,7 @@ class CreateCliente extends CreateRecord
         'record' => $this->record->getKey(),
     ]);
 }
-
+ 
    
     protected function handleRecordCreation(array $data): Model
     {
@@ -150,7 +241,7 @@ class CreateCliente extends CreateRecord
         ->success() // puedes cambiar por ->info(), ->warning(), ->danger()
         ->icon('icon-customer') // cualquier icono Heroicon
         ->persistent(); // no se cierra solo
-}
+} */
 
 
 }

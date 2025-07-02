@@ -129,7 +129,8 @@ public static function form(Form $form): Form
                             ->nullable(false) // Campo obligatorio
                             ->required() // Es obligatorio
                             ->searchable()
-                            ->default(fn () => request()->query('lead_id'))
+                           ->default(fn () => request()->query('lead_id'))
+                            // ->default(fn ($livewire) => $livewire->getRequest()->query('lead_id'))
                             ->preload()
                             ->columnSpan(1)
                             ->suffixIcon('heroicon-m-identification'),

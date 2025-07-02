@@ -9,6 +9,7 @@ use App\Filament\Resources\DepartamentoResource\RelationManagers;
 use App\Models\Departamento;
 use BezhanSalleh\FilamentShield\Contracts\HasShieldPermissions;
 use Filament\Forms;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -50,6 +51,19 @@ class DepartamentoResource extends Resource implements HasShieldPermissions
                 Forms\Components\TextInput::make('nombre')
                     ->required()
                     ->maxLength(191),
+                 Select::make('coordinador_id')
+                ->label('Coordinador Asignado')
+                ->relationship(
+                    name: 'coordinador',
+                    titleAttribute: 'name',
+                    // Mostramos solo usuarios con el rol 'coordinador'
+                    modifyQueryUsing: fn (Builder $query) => $query->whereHas(
+                        'roles', fn ($q) => $q->where('name', 'coordinador')
+                    )
+                )
+                ->searchable()
+                ->preload()
+                ->nullable(), // Un departamento puede no tener coordinador asignado    
             ]);
     }
 
@@ -59,6 +73,22 @@ class DepartamentoResource extends Resource implements HasShieldPermissions
             ->columns([
                 Tables\Columns\TextColumn::make('nombre')
                     ->searchable(),
+
+                     TextColumn::make('coordinador.name')
+                ->label('Coordinador Asignado')
+                ->badge()
+                ->color('success')
+                ->placeholder('Sin asignar') // Texto si no hay coordinador
+                ->sortable(),
+            
+            // Columna extra muy útil: cuenta cuántos trabajadores tiene el depto.
+           TextColumn::make('trabajadores_count')
+                ->label('Nº de Trabajadores')
+                // Usamos state() para calcular el valor manualmente
+                ->state(function (Departamento $record): int {
+                    return $record->trabajadores()->count();
+                })
+                ->sortable(),
                 TextColumn::make('created_at')
                     ->label('Fecha creación')
                         ->dateTime('d/m/y - H:m')

@@ -4,28 +4,21 @@ namespace App\Filament\Resources;
 
 use App\Enums\LeadEstadoEnum;
 use App\Filament\Resources\LeadResource\Pages;
-use App\Filament\Resources\LeadResource\RelationManagers;
 use App\Models\Comentario;
 use App\Models\Lead;
 use App\Models\MotivoDescarte;
-use App\Models\Servicio;
 use App\Models\User;
 use BezhanSalleh\FilamentShield\Contracts\HasShieldPermissions;
 use Carbon\Carbon;
-use Filament\Actions\Action;
-use Filament\Forms;
-use Filament\Forms\Components\DatePicker;
+
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Placeholder;
-use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
-use Filament\Forms\Components\ToggleButtons;
-use Filament\Forms\Components\Wizard;
-use Filament\Forms\Components\Wizard\Step;
+
 use Filament\Forms\Form;
 use Filament\Forms\Get;
 
@@ -40,7 +33,7 @@ use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
+
 use Illuminate\Support\Facades\Auth;
 use Malzariey\FilamentDaterangepickerFilter\Filters\DateRangeFilter;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -49,15 +42,12 @@ use Illuminate\Support\HtmlString;
 use Filament\Infolists\Infolist;
 use Filament\Infolists\Components\Section as InfoSection;
 use Filament\Infolists\Components\TextEntry;
-use Filament\Infolists\Components\Group;
 use Filament\Infolists\Components\Grid;
 use Filament\Infolists\Components\RepeatableEntry;
-use Filament\Infolists\Components\Split;
-use Filament\Infolists\Components\Tabs;
-use Filament\Infolists\Components\ViewEntry;
+
 use Filament\Infolists\Components\Actions\Action as ActionInfolist;
 use Illuminate\Support\Facades\Log; // Para escribir en el log de Laravel
-use Filament\Forms\Components\ViewField;
+
 use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 
 

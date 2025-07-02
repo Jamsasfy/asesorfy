@@ -32,8 +32,7 @@ class Cliente extends Model
         'iban_asesorfy',
         'iban_impuestos',
         'ccc',
-        'asesor_id',
-        'coordinador_id',
+        'asesor_id',        
         'observaciones',
         'estado',
         'fecha_alta',
@@ -63,10 +62,7 @@ public function asesor()
     return $this->belongsTo(User::class, 'asesor_id');
 }
 
-public function coordinador()
-{
-    return $this->belongsTo(User::class, 'coordinador_id');
-}
+
 
 public function usuarios(): BelongsToMany
 {

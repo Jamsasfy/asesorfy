@@ -28,18 +28,18 @@ class ProyectoStatsOverview extends BaseWidget
         return $query;
     }
 
-     protected function getStats(): array
+      protected function getStats(): array
     {
         $baseQuery = $this->getProjectsBaseQuery();
 
         // --- Lógica para el subtítulo de la tarjeta 'Pendientes' ---
         $descripcionPendientes = '';
         if (Auth::check() && !Auth::user()->hasRole('asesor')) {
-            $pendientesSinAsignar = Proyecto::where('estado', ProyectoEstadoEnum::Pendiente)
-                                              ->whereNull('user_id')
-                                              ->count();
-            // Ahora siempre mostramos el texto, aunque sea "0 sin asignar"
-            $descripcionPendientes = $pendientesSinAsignar . ' sin asignar'; 
+            // ▼▼▼ CAMBIO CLAVE AQUÍ ▼▼▼
+            // Ahora contamos todos los proyectos sin asesor, sin importar su estado.
+            $pendientesSinAsignar = Proyecto::whereNull('user_id')->count();
+            
+            $descripcionPendientes = $pendientesSinAsignar . ' sin asignar en total'; 
         }
 
         return [
@@ -68,4 +68,5 @@ class ProyectoStatsOverview extends BaseWidget
                 ->color('danger'),
         ];
     }
+    
 }

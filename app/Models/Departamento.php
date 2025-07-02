@@ -3,17 +3,23 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Departamento extends Model
 {
     protected $guarded = [];
 
-     // Relación inversa many-to-many (si deseas acceder a los usuarios asociados)
-     public function users() :BelongsToMany
-     {
-         return $this->belongsToMany(User::class, 'departamento_user', 'departamento_id', 'user_id');
-     }
+   // Un departamento es coordinado por un usuario
+public function coordinador(): BelongsTo
+{
+    return $this->belongsTo(User::class, 'coordinador_id');
+}
 
+// Un departamento tiene muchos trabajadores
+public function trabajadores(): HasMany
+{
+    return $this->hasMany(Trabajador::class, 'departamento_id');
+}
 
 }

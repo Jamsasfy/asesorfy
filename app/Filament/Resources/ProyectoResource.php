@@ -40,12 +40,13 @@ use Filament\Forms\Set; // <<< ASEGÚRATE DE QUE ESTA LÍNEA ESTÉ AQUÍ
 use Filament\Support\Enums\Alignment;
 use Illuminate\Support\Facades\Log; // Para Log::error
 use Filament\Forms\Components\Toggle; // Para el Toggle en los formularios de las acciones
-use App\Enums\ClienteSuscripcionEstadoEnum;
 use Filament\Infolists\Components\ViewEntry;
+use App\Enums\ServicioTipoEnum;
+use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
+use App\Enums\ClienteSuscripcionEstadoEnum;
 
-use Illuminate\Database\Eloquent\Model;
-use Filament\Tables\Filters\TrashedFilter;
-use Illuminate\Database\Eloquent\Collection;
+
+
 
 
 
@@ -340,16 +341,26 @@ public static function getNavigationLabel(): string
             
             ->filters([
                 // Filtro por Cliente
+                  Tables\Filters\SelectFilter::make('servicio_id')
+                ->label('Servicio Único') // He cambiado la etiqueta para más claridad
+                ->relationship(
+                    name: 'servicio', 
+                    titleAttribute: 'nombre',
+                    // ▼▼▼ AÑADIMOS ESTA CONDICIÓN ▼▼▼
+                    modifyQueryUsing: fn (Builder $query) => $query->where('tipo', ServicioTipoEnum::UNICO)
+                )
+                ->searchable()
+                ->preload(),
                 Tables\Filters\SelectFilter::make('cliente_id')
-                    ->relationship('cliente', 'razon_social')
+                    ->relationship('cliente', 'dni_cif')
                     ->searchable()
                     ->preload()
                     ->label('Filtrar por Cliente'),
-
+               
                 // Filtro por Asesor Asignado
                 Tables\Filters\SelectFilter::make('user_id')
                     ->relationship('user', 'name', fn (Builder $query) => 
-                        $query->whereHas('roles', fn (Builder $q) => $q->whereIn('name', ['comercial', 'super_admin']))
+                        $query->whereHas('roles', fn (Builder $q) => $q->whereIn('name', ['asesor', 'coordinador']))
                     )
                     ->searchable()
                     ->preload()
@@ -360,13 +371,41 @@ public static function getNavigationLabel(): string
                     ->options(ProyectoEstadoEnum::class) // Usa el Enum para las opciones
                     ->native(false)
                     ->label('Filtrar por Estado'),
-
-                // Filtro por Fecha de Finalización Real
-                DateRangeFilter::make('fecha_finalizacion')
+                 DateRangeFilter::make('created_at')
                    
+                    ->label('Fecha Creación'),
+                // Filtro por Fecha de Finalización Real
+                DateRangeFilter::make('fecha_finalizacion')                   
                     ->label('Fecha Finalización'),
+                DateRangeFilter::make('agenda')                   
+                    ->label('Próximo seguimiento')
+                     ->ranges([
+                    // --- PASADO ---
+                    'Ayer' => [now()->subDay()->startOfDay(), now()->subDay()->endOfDay()],
+                    'Semana Pasada' => [now()->subWeek()->startOfWeek(), now()->subWeek()->endOfWeek()],
+                    'Mes Pasado' => [now()->subMonthNoOverflow()->startOfMonth(), now()->subMonthNoOverflow()->endOfMonth()],
+                    'Año Pasado' => [now()->subYear()->startOfYear(), now()->subYear()->endOfYear()],
+            
+                    // --- PRESENTE ---
+                    'Hoy' => [now()->startOfDay(), now()->endOfDay()],
+            
+                    // --- PERIODOS ACTUALES (Incluyen presente y futuro cercano) ---
+                    'Esta Semana' => [now()->startOfWeek(), now()->endOfWeek()],
+                    'Este Mes' => [now()->startOfMonth(), now()->endOfMonth()],
+                    'Este Año' => [now()->startOfYear(), now()->endOfYear()],
+            
+                    // --- FUTURO ---
+                    'Próxima Semana' => [now()->addWeek()->startOfWeek(), now()->addWeek()->endOfWeek()],
+                    'Próximo Mes' => [now()->addMonthNoOverflow()->startOfMonth(), now()->addMonthNoOverflow()->endOfMonth()],
+                    'Próximo Año' => [now()->addYear()->startOfYear(), now()->addYear()->endOfYear()],
+                ]),
+                Tables\Filters\Filter::make('sin_asesor')
+                ->label('Sin Asesor Asignado')
+                ->query(fn (Builder $query): Builder => $query->whereNull('user_id'))
+                ->toggle(),
                      
-            ])
+            ],layout: \Filament\Tables\Enums\FiltersLayout::AboveContent)
+            ->filtersFormColumns(8)
          
             ->actions([
                 Tables\Actions\EditAction::make()
@@ -477,6 +516,67 @@ public static function getNavigationLabel(): string
 ->bulkActions([
     Tables\Actions\BulkActionGroup::make([
         Tables\Actions\DeleteBulkAction::make(),
+          ExportBulkAction::make('exportar_completo')
+        ->label('Exportar seleccionados')
+        ->exports([
+            \pxlrbt\FilamentExcel\Exports\ExcelExport::make('proyectos')
+                //->fromTable() // usa los registros seleccionados
+                ->withColumns([
+                // --- Datos del Proyecto ---
+                \pxlrbt\FilamentExcel\Columns\Column::make('id')
+                    ->heading('ID Proyecto'),
+                \pxlrbt\FilamentExcel\Columns\Column::make('nombre')
+                    ->heading('Nombre del Proyecto'),
+                \pxlrbt\FilamentExcel\Columns\Column::make('estado')
+                    ->heading('Estado')
+                    ->formatStateUsing(fn ($state) => $state instanceof \App\Enums\ProyectoEstadoEnum ? $state->getLabel() : $state), // Muestra la etiqueta del Enum   
+                // --- Datos del Cliente Asociado ---
+                \pxlrbt\FilamentExcel\Columns\Column::make('cliente.razon_social')
+                    ->heading('Cliente'),
+                \pxlrbt\FilamentExcel\Columns\Column::make('cliente.dni_cif')
+                    ->heading('DNI/CIF Cliente'),
+                // --- Datos de Asignación ---
+                \pxlrbt\FilamentExcel\Columns\Column::make('user.name')
+                    ->heading('Asesor Asignado al Proyecto'),
+                // --- Datos de la Venta de Origen ---
+                \pxlrbt\FilamentExcel\Columns\Column::make('venta.id')
+                    ->heading('ID Venta Origen'),
+                \pxlrbt\FilamentExcel\Columns\Column::make('venta.comercial.name')
+                    ->heading('Comercial (Venta)'),
+                \pxlrbt\FilamentExcel\Columns\Column::make('servicio.nombre')
+                    ->heading('Servicio Activador'),
+                     // ▼▼▼ AÑADIR ESTA NUEVA COLUMNA ▼▼▼
+                \pxlrbt\FilamentExcel\Columns\Column::make('suscripciones_pendientes')
+                    ->heading('Suscripciones Dependientes')
+                    ->getStateUsing(function (Proyecto $record): int {
+                        // Si el proyecto no tiene una venta asociada, no hay dependencias.
+                        if (!$record->venta) {
+                            return 0;
+                        }
+
+                        // Contamos las suscripciones de la misma venta que están pendientes.
+                        return $record->venta->suscripciones()
+                            ->where('estado', ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION)
+                            ->count();
+                    }),
+                // --- Fechas Clave ---
+                \pxlrbt\FilamentExcel\Columns\Column::make('created_at')
+                    ->heading('Fecha Creación')
+                    ->formatStateUsing(fn ($state) => $state ? \Carbon\Carbon::parse($state)->format('d/m/Y H:i') : ''),
+                \pxlrbt\FilamentExcel\Columns\Column::make('agenda')
+                    ->heading('Próximo Seguimiento')
+                    ->formatStateUsing(fn ($state) => $state ? \Carbon\Carbon::parse($state)->format('d/m/Y H:i') : ''),
+                \pxlrbt\FilamentExcel\Columns\Column::make('fecha_finalizacion')
+                    ->heading('Fecha Finalización')
+                    ->formatStateUsing(fn ($state) => $state ? \Carbon\Carbon::parse($state)->format('d/m/Y H:i') : ''),
+            ]),
+        ])
+        ->icon('icon-excel2')
+        ->color('success')
+        ->deselectRecordsAfterCompletion()
+        ->requiresConfirmation()
+        ->modalHeading('Exportar Proyectos Seleccionados')
+        ->modalDescription('Exportarás todos los datos de los Proyectos seleccionados.'),
 
       
     ]),

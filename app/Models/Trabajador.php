@@ -22,15 +22,17 @@ class Trabajador extends Model
           return $this->belongsTo(Oficina::class);
       }
   
-      public function departamentos(): BelongsToMany
-      {
-          return $this->belongsToMany(
-              Departamento::class,
-              'departamento_trabajador',
-              'trabajador_id',
-              'departamento_id'
-          );
-      }
+     // Un trabajador pertenece a un departamento
+public function departamento(): BelongsTo
+{
+    return $this->belongsTo(Departamento::class);
+}
+
+// Accesor para obtener el coordinador fácilmente
+public function getCoordinadorAttribute(): ?User
+{
+    return $this->departamento?->coordinador;
+}
 
       protected static function booted()
 {

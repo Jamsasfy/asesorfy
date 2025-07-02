@@ -149,12 +149,13 @@ class TrabajadorResource extends Resource implements HasShieldPermissions
                         ->maxLength(191),
                     Forms\Components\TextInput::make('numero_cuenta_nomina')
                         ->maxLength(191),
-                    Select::make('departamentos')
-                        ->label('Departamentos')
-                        ->relationship('departamentos', 'nombre')
-                        ->multiple()
-                        ->required()
-                        ->preload(),
+                   Select::make('departamento_id')
+                        ->label('Departamento')
+                        ->relationship('departamento', 'nombre')
+                        ->searchable()
+                        ->preload()
+                        ->required() // Opcional: hazlo ->nullable() si un trabajador puede no tener depto.
+                        ->placeholder('Selecciona un departamento'),
              
 
 
@@ -183,10 +184,13 @@ class TrabajadorResource extends Resource implements HasShieldPermissions
                             : '⚠️ Sin rol, asignar uno'
                     )
                     ->color(fn ($state) => str_contains($state, 'Sin rol') ? 'warning' : 'primary'),
-                TextColumn::make('departamentos.nombre')   
-                ->badge()
-                ->searchable()               
-                ->sortable(),              
+               TextColumn::make('departamento.nombre')
+                        ->label('Departamento')
+                        ->badge()
+                        ->color('info')
+                        ->placeholder('Sin departamento')
+                        ->searchable()
+                        ->sortable(),        
                 TextColumn::make('oficina.nombre')                  
                     ->sortable(),               
                 TextColumn::make('telefono')
@@ -247,16 +251,10 @@ class TrabajadorResource extends Resource implements HasShieldPermissions
                 ->relationship('oficina', 'nombre')
                 ->preload()
                 ->searchable(),
-                SelectFilter::make('departamento.nombre')
-                ->label('Departamento')
-                ->relationship('departamentos', 'nombre')
-                ->preload()
-                ->searchable(),
-            /*   SelectFilter::make('departamento.nombre')
-                ->label('Departamento')
-                ->relationship('departamentos', 'nombre')
-                ->preload()
-                ->searchable(),  */
+              SelectFilter::make('departamento') // Filtramos por la relación
+                ->relationship('departamento', 'nombre')
+                ->label('Filtrar por Departamento'),
+           
                 Filter::make('rol')
                 //->label('Rol del usuario')
                 ->form([

@@ -232,14 +232,7 @@ class ClienteResource extends Resource implements HasShieldPermissions
                         ->searchable()
                         ->suffixIcon('heroicon-m-user-group'),
 
-                    Select::make('coordinador_id')
-                        ->label('Coordinador')
-                        ->relationship('coordinador', 'name', fn ($query) =>
-                            $query->whereHas('roles', fn ($q) => $q->where('name', 'coordinador'))
-                        )
-                        ->preload()
-                        ->searchable()
-                        ->suffixIcon('heroicon-m-user-group'),
+                  
                 ])
                 ->columns(2)
                 ->visibleOn('edit'), // 👈 solo en edición,
@@ -647,11 +640,16 @@ class ClienteResource extends Resource implements HasShieldPermissions
                 ],layout: FiltersLayout::AboveContent)
                 ->filtersFormColumns(7)
         ->actions([
-            Tables\Actions\ViewAction::make(),
-            Tables\Actions\EditAction::make(),
+            Tables\Actions\ViewAction::make()
+            ->label('')
+            ->tooltip('Ver cliente'),
+            Tables\Actions\EditAction::make()
+            ->label('')
+            ->tooltip('Editar cliente'),
             ActionsAction::make('cambiarAsesor')
             
-                ->label('Cambiar asesor')
+                ->label('')
+                ->tooltip('Cambiar asesor del cliente')
                 ->icon('heroicon-o-arrow-path')
                 ->visible(fn ($record) =>
                 !empty($record->asesor_id) &&
@@ -682,7 +680,8 @@ class ClienteResource extends Resource implements HasShieldPermissions
                 ->modalSubmitActionLabel('Actualizar'),
                 
             ActionsAction::make('quitarAsesor')
-                ->label('Quitar asesor')
+                ->label('')
+                ->tooltip('Quitar asesor del cliente')
                 ->icon('heroicon-o-user-minus')
                 ->color('danger')
                 ->visible(fn ($record) =>
@@ -705,7 +704,8 @@ class ClienteResource extends Resource implements HasShieldPermissions
                 }),
                 
             ActionsAction::make('asignarAsesor')
-                ->label('Asignar asesor')
+                ->label('')
+                ->tooltip('Asignar asesor al cliente')
                 ->icon('heroicon-o-user-plus')
                 ->color('warning')
                 ->visible(fn ($record) =>
@@ -885,13 +885,15 @@ class ClienteResource extends Resource implements HasShieldPermissions
                                 ? $record->asesor->name
                                 : '⚠️ Sin asignar'
                         ),
-                    \pxlrbt\FilamentExcel\Columns\Column::make('coordinador.name')
-                        ->heading('Coordinador')
-                        ->getStateUsing(fn ($record) =>
-                            $record->coordinador
-                                ? $record->coordinador->name
-                                : '⚠️ Sin asignar'
-                        ),
+                   \pxlrbt\FilamentExcel\Columns\Column::make('coordinador') // Usamos un nombre genérico
+                    ->heading('Coordinador')
+                    ->getStateUsing(function (Cliente $record): string {
+                        // Seguimos la cadena de relaciones para encontrar el nombre del coordinador
+                        $coordinadorName = $record->asesor?->trabajador?->departamento?->coordinador?->name;
+
+                        // Si lo encontramos, lo devolvemos. Si no, 'Sin asignar'.
+                        return $coordinadorName ?? '⚠️ Sin asignar';
+                    }),
                     \pxlrbt\FilamentExcel\Columns\Column::make('observaciones')
                         ->heading('Observaciones'),
                     \pxlrbt\FilamentExcel\Columns\Column::make('created_at')
