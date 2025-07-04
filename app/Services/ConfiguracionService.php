@@ -3,59 +3,51 @@
 namespace App\Services;
 
 use App\Models\VariableConfiguracion;
-use Illuminate\Support\Facades\Crypt; // Usaremos el cifrado de Laravel
-use Illuminate\Support\Facades\Log; // Para registrar errores si algo falla
+use Illuminate\Support\Facades\Cache; // Para la caché
+use Illuminate\Support\Facades\Crypt; // Para el cifrado
+use Illuminate\Support\Facades\Log;   // Para registrar errores
 
 class ConfiguracionService
 {
     /**
-     * Obtiene el valor de una variable de configuración.
-     * Desencripta si es necesario y castea al tipo de dato correcto.
-     *
-     * @param string $nombreVariable El nombre de la variable a buscar.
-     * @param mixed $default Valor por defecto a devolver si la variable no existe o hay un error.
-     * @return mixed El valor de la variable con el tipo de dato correcto.
+     * Obtiene el valor de una variable de configuración usando la caché.
      */
     public static function get(string $nombreVariable, mixed $default = null): mixed
     {
-        $variable = VariableConfiguracion::where('nombre_variable', $nombreVariable)->first();
+        // 1. Carga todas las variables desde la caché para no consultar la base de datos.
+        $configuraciones = Cache::rememberForever('app_configuraciones', function () {
+            return VariableConfiguracion::all()->keyBy('nombre_variable');
+        });
+
+        $variable = $configuraciones->get($nombreVariable);
 
         if (!$variable) {
-            return $default; // La variable no existe, devuelve el valor por defecto
+            return $default;
         }
 
         $valor = $variable->valor_variable;
 
-        // Si la variable está marcada como secreto, intentamos descifrarla
+        // 2. Descifra el valor si es un secreto
         if ($variable->es_secreto) {
             try {
                 $valor = Crypt::decryptString($valor);
-            } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
-                // Si falla el descifrado (ej. clave de la app cambiada), registramos el error
+            } catch (\Exception $e) {
                 Log::error("Error al descifrar la variable '{$nombreVariable}': " . $e->getMessage());
-                return $default; // Y devolvemos el valor por defecto por seguridad
+                return $default;
             }
         }
 
-        // Castear el valor al tipo de dato especificado en la base de datos
+        // 3. Devuelve el valor con el tipo correcto
         return match ($variable->tipo_dato) {
-            'numero_entero' => (int) $valor,
+            'numero_entero'  => (int) $valor,
             'numero_decimal' => (float) $valor,
-            'booleano' => (bool) filter_var($valor, FILTER_VALIDATE_BOOLEAN), // Manejo robusto para 'true', 'false', '1', '0'
-            default => (string) $valor, // Por defecto, lo tratamos como cadena
+            'booleano'       => filter_var($valor, FILTER_VALIDATE_BOOLEAN),
+            default          => (string) $valor,
         };
     }
 
     /**
-     * Guarda o actualiza una variable de configuración.
-     * Cifra el valor si la variable se marca como secreta.
-     *
-     * @param string $nombreVariable Nombre único de la variable.
-     * @param mixed $valor El valor a guardar (se cifrará si es secreto).
-     * @param string $tipoDato Tipo de dato ('cadena', 'numero_entero', etc.).
-     * @param string|null $descripcion Descripción de la variable.
-     * @param bool $esSecreto Si es TRUE, el valor se cifrará.
-     * @return VariableConfiguracion La instancia del modelo guardado o actualizado.
+     * Guarda o actualiza una variable y limpia la caché.
      */
     public static function set(
         string $nombreVariable,
@@ -64,16 +56,14 @@ class ConfiguracionService
         ?string $descripcion = null,
         bool $esSecreto = false
     ): VariableConfiguracion {
-        // Convertimos el valor a string antes de operar con él, para el cifrado y guardado en DB
+        
         $valorParaGuardar = (string) $valor;
 
-        // Si es un secreto, ciframos el valor antes de guardarlo en la base de datos
         if ($esSecreto) {
             $valorParaGuardar = Crypt::encryptString($valorParaGuardar);
         }
 
-        // Busca la variable por su nombre; si no existe, la crea.
-        return VariableConfiguracion::updateOrCreate(
+        $variable = VariableConfiguracion::updateOrCreate(
             ['nombre_variable' => $nombreVariable],
             [
                 'valor_variable' => $valorParaGuardar,
@@ -82,5 +72,10 @@ class ConfiguracionService
                 'es_secreto'     => $esSecreto,
             ]
         );
+
+        // Limpia la caché para que el próximo 'get' lea el valor actualizado
+        Cache::forget('app_configuraciones');
+
+        return $variable;
     }
 }

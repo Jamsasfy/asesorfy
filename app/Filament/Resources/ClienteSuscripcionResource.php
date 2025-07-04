@@ -7,6 +7,7 @@ use App\Enums\ServicioTipoEnum;
 use App\Filament\Resources\ClienteSuscripcionResource\Pages;
 use App\Filament\Resources\ClienteSuscripcionResource\RelationManagers;
 use App\Models\ClienteSuscripcion;
+use BezhanSalleh\FilamentShield\Contracts\HasShieldPermissions;
 use Filament\Forms;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Grid;
@@ -24,11 +25,26 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Components\Grid as InfolistGrid;
 
 
-class ClienteSuscripcionResource extends Resource
+class ClienteSuscripcionResource extends Resource implements HasShieldPermissions
 {
     protected static ?string $model = ClienteSuscripcion::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+
+    public static function getPermissionPrefixes(): array
+    {
+        return [
+            'view',
+            'view_any',
+            'create',
+            'update',
+            'delete',
+            'delete_any',
+        ];
+    }
+
+
+
 
      public static function form(Form $form): Form
     {

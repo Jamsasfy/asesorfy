@@ -3,10 +3,10 @@
 namespace App\Policies;
 
 use App\Models\User;
-use App\Models\ClienteSuscripcion;
+use App\Models\Factura;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
-class ClienteSuscripcionPolicy
+class FacturaPolicy
 {
     use HandlesAuthorization;
 
@@ -15,15 +15,15 @@ class ClienteSuscripcionPolicy
      */
     public function viewAny(User $user): bool
     {
-        return $user->can('view_any_cliente::suscripcion');
+        return $user->can('view_any_factura');
     }
 
     /**
      * Determine whether the user can view the model.
      */
-    public function view(User $user, ClienteSuscripcion $clienteSuscripcion): bool
+    public function view(User $user, Factura $factura): bool
     {
-        return $user->can('view_cliente::suscripcion');
+        return $user->can('view_factura');
     }
 
     /**
@@ -31,23 +31,23 @@ class ClienteSuscripcionPolicy
      */
     public function create(User $user): bool
     {
-        return $user->can('create_cliente::suscripcion');
+        return $user->can('create_factura');
     }
 
     /**
      * Determine whether the user can update the model.
      */
-    public function update(User $user, ClienteSuscripcion $clienteSuscripcion): bool
+    public function update(User $user, Factura $factura): bool
     {
-        return $user->can('update_cliente::suscripcion');
+        return $user->can('update_factura');
     }
 
     /**
      * Determine whether the user can delete the model.
      */
-    public function delete(User $user, ClienteSuscripcion $clienteSuscripcion): bool
+    public function delete(User $user, Factura $factura): bool
     {
-        return $user->can('delete_cliente::suscripcion');
+        return $user->can('delete_factura');
     }
 
     /**
@@ -55,13 +55,13 @@ class ClienteSuscripcionPolicy
      */
     public function deleteAny(User $user): bool
     {
-        return $user->can('delete_any_cliente::suscripcion');
+        return $user->can('delete_any_factura');
     }
 
     /**
      * Determine whether the user can permanently delete.
      */
-    public function forceDelete(User $user, ClienteSuscripcion $clienteSuscripcion): bool
+    public function forceDelete(User $user, Factura $factura): bool
     {
         return $user->can('{{ ForceDelete }}');
     }
@@ -77,7 +77,7 @@ class ClienteSuscripcionPolicy
     /**
      * Determine whether the user can restore.
      */
-    public function restore(User $user, ClienteSuscripcion $clienteSuscripcion): bool
+    public function restore(User $user, Factura $factura): bool
     {
         return $user->can('{{ Restore }}');
     }
@@ -93,7 +93,7 @@ class ClienteSuscripcionPolicy
     /**
      * Determine whether the user can replicate.
      */
-    public function replicate(User $user, ClienteSuscripcion $clienteSuscripcion): bool
+    public function replicate(User $user, Factura $factura): bool
     {
         return $user->can('{{ Replicate }}');
     }
