@@ -27,7 +27,7 @@ use Spatie\Permission\Models\Role;
 class UsuariosRelationManager extends RelationManager
 {
     protected static string $relationship = 'usuarios';
-    protected static ?string $title = '👥 Usuarios con acceso al cliente';
+    protected static ?string $title = 'Usuarios con acceso';
     protected static ?string $recordTitleAttribute = 'email';
 
      // QUITA el “static” y asegúrate de no ponerle parámetros

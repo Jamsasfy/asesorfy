@@ -118,11 +118,11 @@ class Lead extends Model
      * Obtiene el cliente asociado (si se ha convertido).
      * Relación con 'clientes' a través de 'cliente_id'.
      */
-    public function cliente(): BelongsTo
-    {
-        // Asegúrate que el modelo 'Cliente' existe en App\Models
-        return $this->belongsTo(Cliente::class);
-    }
+   // Un Lead PERTENECE A UN Cliente
+public function cliente(): BelongsTo
+{
+    return $this->belongsTo(Cliente::class);
+}
 
    
 

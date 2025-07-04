@@ -84,9 +84,9 @@ public function comentarios(): MorphMany
     return $this->morphMany(Comentario::class, 'comentable');
 }
 
-public function lead(): BelongsTo
+public function leads(): HasMany
 {
-    return $this->belongsTo(Lead::class);
+    return $this->hasMany(Lead::class);
 }
 
  // Relación uno-a-muchos con Ventas (todas las ventas de este cliente)

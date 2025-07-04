@@ -5,10 +5,7 @@ namespace App\Filament\Resources;
 use App\Enums\CicloFacturacionEnum;
 use App\Enums\ServicioTipoEnum; // Importar Enum
 use App\Filament\Resources\ServicioResource\Pages;
-use App\Filament\Resources\ServicioResource\RelationManagers;
 use App\Models\Servicio;
-use Filament\Forms;
-use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
@@ -21,13 +18,14 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Columns\IconColumn; // Importar IconColumn
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Columns\ToggleColumn; // Importar ToggleColumn
-use Filament\Tables\Enums\FiltersLayout;
+
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter; // Importar SelectFilter
 use Filament\Tables\Filters\TernaryFilter; // Importar TernaryFilter
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
+
+
 
 class ServicioResource extends Resource
 {
@@ -45,7 +43,7 @@ class ServicioResource extends Resource
         ->schema([
             Section::make('Detalles del Servicio')
                 ->schema([
-                    Grid::make(4)->schema([
+                    Grid::make(5)->schema([
                         TextInput::make('nombre')
                             ->required()
                             ->maxLength(255),
@@ -75,6 +73,46 @@ class ServicioResource extends Resource
                             ->searchable()
                             ->visible(fn (Get $get) => $get('tipo') === ServicioTipoEnum::RECURRENTE->value)
                             ->required(fn (Get $get) => $get('tipo') === ServicioTipoEnum::RECURRENTE->value),
+                         Select::make('departamento_id')
+                            ->label('Departamento Responsable')
+                            ->relationship('departamento', 'nombre')
+                            ->searchable()
+                            ->preload()
+                            ->required()
+                            ->placeholder('Selecciona el departamento')
+                            
+                            // --- Formulario para crear un nuevo departamento ---
+                            ->createOptionForm([
+                                TextInput::make('nombre')
+                                    ->label('Nombre del nuevo departamento')
+                                    ->required()
+                                    ->maxLength(255)
+                                    ->columnSpanFull(),
+                                    
+                                // --- Selector para asignar el coordinador ---
+                                Select::make('coordinador_id')
+                                    ->label('Asignar Coordinador')
+                                    ->relationship(
+                                        name: 'coordinador', 
+                                        titleAttribute: 'name',
+                                        // Mostramos solo usuarios con el rol 'coordinador'
+                                        modifyQueryUsing: fn (Builder $query) => $query->whereHas(
+                                            'roles', fn ($q) => $q->where('name', 'coordinador')
+                                        )
+                                    )
+                                    ->searchable()
+                                    ->preload()
+                                    ->nullable() // El coordinador puede ser opcional al crear el depto.
+                                    ->placeholder('Puedes asignar un coordinador ahora o más tarde'),
+                            ])
+                            // --- Personalización de la ventana modal ---
+                            ->createOptionAction(function ($action) {
+                                $action
+                                    ->modalHeading('Crear Nuevo Departamento')
+                                    ->modalSubmitActionLabel('Crear departamento')
+                                    ->modalWidth('xl'); // Hacemos la ventana un poco más ancha
+                            }),
+    
                     ]),
 
                     Grid::make(3)->schema([
@@ -94,6 +132,7 @@ class ServicioResource extends Resource
                             ->helperText('Ej. alta de autónomo, capitalización, etc.'),
                     ]),
 
+                  
                     Textarea::make('descripcion')
                         ->maxLength(65535)
                         ->columnSpanFull(),
@@ -107,6 +146,16 @@ class ServicioResource extends Resource
                 TextColumn::make('nombre')
                     ->searchable()
                     ->sortable(),
+
+                    TextColumn::make('departamento.nombre')
+                    ->label('Departamento')
+                    ->badge()
+                    ->color('warning')
+                    ->placeholder('Sin asignar')
+                    ->searchable()
+                    ->sortable(),
+
+
                 TextColumn::make('tipo')
                     ->badge() // Mostrar el tipo como badge
                     ->formatStateUsing(fn (ServicioTipoEnum $state): string => $state->getLabel()) // Usar etiqueta legible
@@ -156,12 +205,53 @@ class ServicioResource extends Resource
                     ->sortable(),
                    
             ])
-            ->filters([
-                SelectFilter::make('tipo')
-                    ->options(collect(ServicioTipoEnum::cases())->mapWithKeys(fn ($case) => [$case->value => $case->getLabel()])),
-                TernaryFilter::make('activo') // Filtro Sí/No/Todos para activos
-                    ->label('Estado Activo'),
-             ],layout: FiltersLayout::AboveContent)
+             ->filters([
+            // --- Filtro Condicional para TIPO y CICLO ---
+            Filter::make('tipo_y_ciclo')
+                    ->label('Tipo y Ciclo')
+                ->form([
+                    Select::make('tipo')
+                        ->label('Tipo de Servicio')
+                        // CAMBIO: Construimos las opciones manualmente
+                        ->options(
+                            collect(ServicioTipoEnum::cases())->mapWithKeys(fn ($case) => [$case->value => $case->getLabel()])
+                        )
+                        ->live(),
+
+                    Select::make('ciclo_facturacion')
+                        ->label('Ciclo de Facturación')
+                        // CAMBIO: Construimos las opciones manualmente
+                        ->options(
+                            collect(CicloFacturacionEnum::cases())->mapWithKeys(fn ($case) => [$case->value => $case->label()])
+                        )
+                        ->visible(fn (\Filament\Forms\Get $get): bool => $get('tipo') === ServicioTipoEnum::RECURRENTE->value),
+                ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when($data['tipo'], fn ($q, $tipo) => $q->where('tipo', $tipo))
+                            ->when($data['ciclo_facturacion'], fn ($q, $ciclo) => $q->where('ciclo_facturacion', $ciclo));
+                    }),
+            // --- Filtro por Departamento ---
+            SelectFilter::make('departamento')
+                ->relationship('departamento', 'nombre'),
+            
+            // --- Filtros de tipo Sí/No/Todos ---
+           Filter::make('activo')
+                ->label('Solo Activos')
+                ->query(fn (Builder $query): Builder => $query->where('activo', true))
+                ->toggle(),
+
+            Filter::make('es_tarifa_principal')
+                ->label('Solo Tarifas Principales')
+                ->query(fn (Builder $query): Builder => $query->where('es_tarifa_principal', true))
+                ->toggle(),
+
+            Filter::make('requiere_proyecto_activacion')
+                ->label('Solo los que Requieren Proyecto')
+                ->query(fn (Builder $query): Builder => $query->where('requiere_proyecto_activacion', true))
+                ->toggle(),
+
+        ], layout: \Filament\Tables\Enums\FiltersLayout::AboveContent)
             ->filtersFormColumns(7)
             ->actions([
                 Tables\Actions\ViewAction::make(),

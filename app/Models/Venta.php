@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ClienteSuscripcionEstadoEnum;
-
+use App\Enums\ProyectoEstadoEnum;
 use App\Enums\ServicioTipoEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,6 +14,8 @@ use App\Models\Cliente;
 use Illuminate\Database\Eloquent\Builder;
 use App\Models\User;
 use Filament\Notifications\Notification;
+use Filament\Notifications\Actions\Action;
+use App\Filament\Resources\ProyectoResource;
 
 
 class Venta extends Model
@@ -150,155 +152,155 @@ class Venta extends Model
 
      
     
-    protected function descuentoMensualRecurrenteTotal(): Attribute
-    {
-        return Attribute::make(
-            get: function () {
-                $totalDescuentoMensual = 0;
-                foreach ($this->items as $item) {
-                    $item->loadMissing('servicio');
+   /**
+ * 1. Calcula el descuento total SOLO de los servicios de pago único.
+ */
+protected function descuentoServiciosUnicos(): Attribute
+{
+    return Attribute::make(get: fn (): float => $this->items
+        ->where('servicio.tipo', ServicioTipoEnum::UNICO)
+        ->sum(fn ($item) => ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado)
+    );
+}
 
-                    // SINTAXIS CORRECTA PARA COMPARAR VALOR DE ENUM
-                    // Siempre compara el 'value' del objeto Enum con la cadena literal
-                    if ($item->servicio && $item->servicio->tipo->value === 'recurrente') { 
-                        $subtotalBaseItem = (float)$item->cantidad * (float)($item->precio_unitario ?? 0);
-                        $subtotalAplicadoItem = (float)($item->subtotal_aplicado ?? $item->subtotal);
-                        
-                        if ($subtotalBaseItem <= 0 || $subtotalBaseItem === $subtotalAplicadoItem) {
-                            continue; 
-                        }
-                        $descuentoMontoPorItem = $subtotalBaseItem - $subtotalAplicadoItem;
-                        $totalDescuentoMensual += $descuentoMontoPorItem;
-                    }
-                }
-                return round($totalDescuentoMensual, 2);
-            }
-        );
-    }
+/**
+ * 2. Calcula el descuento que se aplicará en UNA cuota mensual.
+ */
+protected function descuentoRecurrenteMensual(): Attribute
+{
+    return Attribute::make(get: fn (): float => $this->items
+        ->where('servicio.tipo', ServicioTipoEnum::RECURRENTE)
+        ->sum(fn ($item) => ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado)
+    );
+}
 
-    protected function descuentoUnicoTotal(): Attribute
-    {
-        return Attribute::make(
-            get: function () {
-                $totalDescuentoUnico = 0;
-                foreach ($this->items as $item) {
-                    $item->loadMissing('servicio');
+/**
+ * 3. Calcula el AHORRO TOTAL para el cliente de los descuentos recurrentes.
+ * (Descuento de un mes * número de meses de la oferta)
+ */
+protected function ahorroTotalRecurrente(): Attribute
+{
+    return Attribute::make(get: function (): float {
+        $ahorroTotal = $this->items
+            ->where('servicio.tipo', ServicioTipoEnum::RECURRENTE)
+            ->sum(function ($item) {
+                $descuentoMensualItem = ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado;
+                $meses = $item->descuento_duracion_meses ?? 1;
+                return $descuentoMensualItem * $meses;
+            });
+        return round($ahorroTotal, 2);
+    });
+}
 
-                    // SINTAXIS CORRECTA PARA COMPARAR VALOR DE ENUM
-                    if ($item->servicio && $item->servicio->tipo->value === 'unico') { 
-                        $subtotalBaseItem = (float)$item->cantidad * (float)($item->precio_unitario ?? 0);
-                        $subtotalAplicadoItem = (float)($item->subtotal_aplicado ?? $item->subtotal);
-                        
-                        if ($subtotalBaseItem <= 0 || $subtotalBaseItem === $subtotalAplicadoItem) {
-                            continue; 
-                        }
-                        $descuentoMontoPorItem = $subtotalBaseItem - $subtotalAplicadoItem;
-                        $totalDescuentoUnico += $descuentoMontoPorItem;
-                    }
-                }
-                return round($totalDescuentoUnico, 2);
-            }
-        );
-    }
-
-
+protected function importeBaseSinDescuento(): Attribute
+{
+    return Attribute::make(
+        // Suma el campo 'subtotal' de cada item, que es el precio original sin descuento
+        get: fn (): float => $this->items->sum('subtotal')
+    );
+}
+/**
+ * Calcula el importe total de la venta CON IVA.
+ */
+protected function importeTotalConIva(): Attribute
+{
+    return Attribute::make(
+        get: function (): float {
+            // Usamos un IVA del 21% por defecto.
+            // Puedes cambiarlo o hacerlo dinámico si es necesario.
+            $iva = 1.21;
+            return round($this->importe_total * $iva, 2);
+        }
+    );
+}
 
 /**
      * Orquesta la creación de proyectos y suscripciones después de que una venta
      * se haya guardado completamente (incluyendo sus items).
      */
-    public function processSaleAfterCreation(): void
-    {
-        $this->loadMissing('items.servicio', 'cliente');
+public function processSaleAfterCreation(): void
+{
+    // Precargamos relaciones para que las consultas sean más eficientes
+    $this->loadMissing('items.servicio.departamento.coordinador', 'cliente');
 
-        $ventaRequiereProyecto = $this->items->contains(fn ($item) =>
-            $item->servicio?->requiere_proyecto_activacion
-        );
+    $ventaRequiereProyecto = $this->items->contains(fn ($item) =>
+        $item->servicio?->requiere_proyecto_activacion
+    );
 
-        foreach ($this->items as $item) {
-            $servicio = $item->servicio;
-            if (!$servicio) continue;
+    foreach ($this->items as $item) {
+        $servicio = $item->servicio;
+        if (!$servicio) continue;
 
-            // --- Lógica de Proyectos (Sin cambios) ---
-            if ($servicio->requiere_proyecto_activacion) {
-                $proyecto = Proyecto::create([
-                    'nombre'          => "{$servicio->nombre} ({$this->cliente->razon_social})",
-                    'cliente_id'      => $this->cliente_id,
-                    'venta_id'        => $this->id,
-                    'venta_item_id'   => $item->id,
-                    'servicio_id'     => $servicio->id,
-                    'estado'          => \App\Enums\ProyectoEstadoEnum::Pendiente,
-                    'descripcion'     => "Proyecto generado por la venta #{$this->id} para el servicio '{$servicio->nombre}'.",
-                ]);
-
-                 // 2. Preparamos y enviamos la notificación a los coordinadores
-                $coordinadores = \App\Models\User::whereHas('roles', fn ($q) => $q->where('name', 'coordinador'))->get();
-
-                if ($coordinadores->isNotEmpty()) {
-                    Notification::make()
-                        ->title('Nuevo Proyecto Pendiente')
-                        ->body("Proyecto '{$proyecto->nombre}' pendiente asignación.")
-                        ->icon('heroicon-o-briefcase') // Icono de proyecto
-                        ->color('info') // Color azul para notificaciones informativas
-                        ->actions([
-                            \Filament\Notifications\Actions\Action::make('view')
-                                ->label('Ver Proyecto')
-                                ->url(\App\Filament\Resources\ProyectoResource::getUrl('view', ['record' => $proyecto])),
-                        ])
-                        ->sendToDatabase($coordinadores);
-                }
-            }
-
-           
-            // AHORA CREA SUSCRIPCIÓN PARA TODOS LOS TIPOS DE SERVICIO
+        // --- Lógica de Proyectos y Notificación Dirigida ---
+        if ($servicio->requiere_proyecto_activacion) {
             
-            $estadoInicial = null;
-            $fechaInicio = null;
-            $fechaFin = null;
+            $proyecto = Proyecto::create([
+                'nombre'          => "{$servicio->nombre} ({$this->cliente->razon_social})",
+                'cliente_id'      => $this->cliente_id,
+                'venta_id'        => $this->id,
+                'venta_item_id'   => $item->id,
+                'servicio_id'     => $servicio->id,
+                'estado'          => ProyectoEstadoEnum::Pendiente,
+                'descripcion'     => "Proyecto generado por la venta #{$this->id} para el servicio '{$servicio->nombre}'.",
+            ]);
 
-            if ($servicio->tipo === ServicioTipoEnum::UNICO) {
-                // Para servicios únicos, la suscripción se crea activa y se cierra al instante.
-                // Esto sirve para registrarlo y poder facturarlo.
-                $estadoInicial = ClienteSuscripcionEstadoEnum::ACTIVA;
-                $fechaInicio = now();
-                $fechaFin = now(); // El servicio empieza y termina hoy.
+            // ▼▼▼ LÓGICA DE NOTIFICACIÓN CORREGIDA ▼▼▼
 
-            } elseif ($servicio->tipo === ServicioTipoEnum::RECURRENTE) {
-                // Para servicios recurrentes, aplicamos la lógica de activación por proyecto.
-                $estadoInicial = $ventaRequiereProyecto
-                    ? ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION
-                    : ClienteSuscripcionEstadoEnum::ACTIVA;
+            // 1. Obtenemos al coordinador del departamento del servicio
+            $coordinadorDelDepto = $servicio->departamento?->coordinador;
 
-                $fechaInicio = $ventaRequiereProyecto
-                    ? null
-                    : ($item->fecha_inicio_servicio ?? now());
-                
-                $fechaFin = null; // Los recurrentes no tienen fecha de fin por defecto.
-            }
-
-            // Creamos el registro solo si hemos determinado un estado
-            if ($estadoInicial) {
-                ClienteSuscripcion::create([
-                    'cliente_id'             => $this->cliente_id,
-                    'servicio_id'            => $item->servicio_id,
-                    'venta_origen_id'        => $this->id,
-                    'es_tarifa_principal'    => $servicio->es_tarifa_principal,
-                    'precio_acordado'        => $item->precio_unitario_aplicado,
-                    'cantidad'               => $item->cantidad,
-                    'fecha_inicio'           => $fechaInicio,
-                    'fecha_fin'              => $fechaFin, // <-- Se añade la fecha de fin
-                    'estado'                 => $estadoInicial,
-                    'ciclo_facturacion'      => 'mensual',
-                    'descuento_tipo'         => $item->descuento_tipo,
-                    'descuento_valor'        => $item->descuento_valor,
-                    'descuento_descripcion'  => $item->observaciones_descuento,
-                    'descuento_valido_hasta' => $item->descuento_valido_hasta,
-                    'observaciones'          => $item->observaciones_item,
-                ]);
+            // 2. Si existe, le enviamos la notificación solo a él
+            if ($coordinadorDelDepto) {
+                Notification::make()
+                    ->title('Nuevo Proyecto Pendiente')
+                    ->body("El proyecto '{$proyecto->nombre}' de tu departamento necesita un responsable.")
+                    ->icon('heroicon-o-clipboard-document-list')
+                    ->actions([
+                        Action::make('view')
+                            ->label('Ver Proyecto')
+                            ->url(ProyectoResource::getUrl('view', ['record' => $proyecto]))
+                            ->markAsRead()->close(),
+                    ])
+                    ->sendToDatabase($coordinadorDelDepto);
             }
         }
-    }
 
+        // --- Lógica de Creación de Suscripciones (sin cambios) ---
+        $estadoInicial = null;
+        $fechaInicio = null;
+        $fechaFin = null;
+
+        if ($servicio->tipo === ServicioTipoEnum::UNICO) {
+            $estadoInicial = ClienteSuscripcionEstadoEnum::ACTIVA;
+            $fechaInicio = now();
+            $fechaFin = now();
+        } elseif ($servicio->tipo === ServicioTipoEnum::RECURRENTE) {
+            $estadoInicial = $ventaRequiereProyecto ? ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION : ClienteSuscripcionEstadoEnum::ACTIVA;
+            $fechaInicio = $ventaRequiereProyecto ? null : ($item->fecha_inicio_servicio ?? now());
+            $fechaFin = null;
+        }
+
+        if ($estadoInicial) {
+            ClienteSuscripcion::create([
+                'cliente_id'             => $this->cliente_id,
+                'servicio_id'            => $item->servicio_id,
+                'venta_origen_id'        => $this->id,
+                'es_tarifa_principal'    => $servicio->es_tarifa_principal,
+                'precio_acordado'        => $item->subtotal_aplicado,
+                'cantidad'               => $item->cantidad,
+                'fecha_inicio'           => $fechaInicio,
+                'fecha_fin'              => $fechaFin,
+                'estado'                 => $estadoInicial,
+                'ciclo_facturacion'      => $servicio->ciclo_facturacion, // Asegúrate de que este campo exista y se rellene
+                'descuento_tipo'         => $item->descuento_tipo,
+                'descuento_valor'        => $item->descuento_valor,
+                'descuento_descripcion'  => $item->observaciones_descuento,
+                'descuento_valido_hasta' => $item->descuento_valido_hasta,
+                'observaciones'          => $item->observaciones_item,
+            ]);
+        }
+    }
+}
 
   
 

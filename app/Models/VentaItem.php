@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Casts\Attribute; // Mantener si lo usas en otros accesors
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class VentaItem extends Model
 {
@@ -57,12 +58,19 @@ class VentaItem extends Model
         return $this->belongsTo(Servicio::class);
     }
 
-    // --- REMOVIDO: Accessor/Mutator para 'subtotal' ---
-    // Si 'subtotal' va a guardar el valor base (sin descuento),
-    // y 'subtotal_aplicado' el valor con descuento, no necesitamos un accessor
-    // para 'subtotal' que lo calcule automáticamente.
-    // El valor de 'subtotal' se guardará desde el formulario de Filament.
-    // protected function subtotal(): Attribute { ... }
+    // Un VentaItem puede tener un Proyecto asociado
+public function proyecto(): HasOne
+{
+    return $this->hasOne(Proyecto::class);
+}
+
+// Un VentaItem puede tener una Suscripción asociada
+public function suscripcion(): HasOne
+{
+    // La relación es a través de la venta y el servicio, es un poco más compleja
+    return $this->hasOne(ClienteSuscripcion::class, 'venta_origen_id', 'venta_id')
+                ->where('servicio_id', $this->servicio_id);
+}
 
 
    protected static function booted(): void

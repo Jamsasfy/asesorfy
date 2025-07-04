@@ -583,12 +583,14 @@ class ClienteResource extends Resource implements HasShieldPermissions
 
             TextColumn::make('created_at')
                 ->label('Creado en App')
+                 ->toggleable(isToggledHiddenByDefault: true)
                 ->dateTime('d/m/y - H:m')
                
                 ->sortable(),
 
             TextColumn::make('fecha_alta')
                 ->label('Fecha de Alta')
+                 ->toggleable(isToggledHiddenByDefault: true)
                 ->dateTime('d/m/y - H:m')
                
                 ->sortable(),    
@@ -923,6 +925,8 @@ class ClienteResource extends Resource implements HasShieldPermissions
         Clienteresource\RelationManagers\ComentariosRelationManager::class,
        Clienteresource\RelationManagers\DocumentosRelationManager::class,
        Clienteresource\RelationManagers\UsuariosRelationManager::class,
+       RelationManagers\LeadsRelationManager::class,
+        RelationManagers\SuscripcionesRelationManager::class,
 
          
       

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Casts\Attribute; // Asegúrate de tener este use
-
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Servicio extends Model
 {
@@ -28,6 +28,7 @@ class Servicio extends Model
         'es_tarifa_principal', // Este campo es opcional, solo si lo necesitas
         'requiere_proyecto_activacion', // <<< AÑADIDO
         'ciclo_facturacion',
+        'departamento_id',
 
     ];
 
@@ -54,6 +55,14 @@ class Servicio extends Model
     {
         return $this->hasMany(VentaItem::class);
     }
+
+    // Un servicio pertenece a un departamento
+        public function departamento(): BelongsTo
+        {
+            return $this->belongsTo(Departamento::class);
+        }
+
+
 
     //hacer acronimos para los nombres largos
 

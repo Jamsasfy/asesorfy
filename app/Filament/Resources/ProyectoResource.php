@@ -638,7 +638,12 @@ public static function getNavigationLabel(): string
                             ->color('primary')
                             ->placeholder('No informado') // Se mostrará si el campo está vacío
                             ->columnSpanFull(),              
-    
+                    TextEntry::make('venta.lead.procedencia.procedencia')
+                            ->label(new HtmlString('<span class="font-semibold">Tipo de Lead</span>'))
+                            ->badge()
+                            ->color('success')
+                            ->placeholder('No especificado')
+                            ->columnSpanFull(),
                 ])
                 ->columns(3)
                 ->columnSpan(1),
@@ -667,8 +672,8 @@ public static function getNavigationLabel(): string
                                     return 'No asociada'; // Texto si no hay venta
                                 })
                                 ->url(fn (Proyecto $record): ?string => 
-                                    $record->venta_id ? VentaResource::getUrl('edit', ['record' => $record->venta_id]) : null
-                                )
+                                        $record->venta_id ? VentaResource::getUrl('edit', ['record' => $record->venta_id]) : null
+                                    )
                                 ->openUrlInNewTab() // Abrir en nueva pestaña
                                 ->color(function ($state, Proyecto $record): string {
                                     // Color del badge: 'warning' si tiene venta, 'secondary' (gris) si no

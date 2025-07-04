@@ -22,4 +22,12 @@ public function trabajadores(): HasMany
     return $this->hasMany(Trabajador::class, 'departamento_id');
 }
 
+// Un departamento puede tener muchos servicios asociados
+public function servicios(): HasMany
+{
+    return $this->hasMany(Servicio::class);
+}
+
+
+
 }

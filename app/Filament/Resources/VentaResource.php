@@ -34,6 +34,17 @@ use App\Models\ClienteSuscripcion;
 use Filament\Tables\Enums\FiltersLayout;
 use Malzariey\FilamentDaterangepickerFilter\Filters\DateRangeFilter;
 use Carbon\Carbon;
+use Filament\Infolists\Infolist;
+use Filament\Infolists\Components\Grid;
+use Filament\Infolists\Components\Section as InfoSection;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\RepeatableEntry;
+use Illuminate\Support\HtmlString;
+use App\Models\Proyecto;
+use App\Enums\ProyectoEstadoEnum;
+
+
+use Illuminate\Support\Facades\Blade;
 
 
 class VentaResource extends Resource implements HasShieldPermissions
@@ -689,6 +700,10 @@ public static function form(Form $form): Form
             ],layout: FiltersLayout::AboveContent)
                 ->filtersFormColumns(7)
             ->actions([
+                // 1. Añadimos la acción para VER los detalles (el ojo)
+                    Tables\Actions\ViewAction::make()
+                        ->label('') // Sin texto, solo el icono
+                        ->tooltip('Ver Venta'),
                 Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
@@ -793,6 +808,134 @@ public static function form(Form $form): Form
             ]);
     }
 
+public static function infolist(Infolist $infolist): Infolist
+{
+    return $infolist
+        ->schema([
+            // --- BLOQUE 1: Información General y Contexto ---
+            Grid::make(3)->schema([
+                // Columna izquierda
+                InfoSection::make('Detalles de la Venta')
+                    ->columnSpan(2)
+                    ->columns(2)
+                    ->schema([
+                        TextEntry::make('cliente.razon_social')->label('Cliente')
+                            ->url(fn (Venta $record) => ClienteResource::getUrl('view', ['record' => $record->cliente_id]))->openUrlInNewTab()->icon('heroicon-m-user-circle')->color('primary')->weight('semibold')->columnSpanFull(),
+
+                        TextEntry::make('fecha_venta')->label('Fecha de Venta')
+                            ->icon('heroicon-m-calendar-days')->dateTime('d/m/Y H:i'),
+
+                        TextEntry::make('observaciones')->label('Observaciones')
+                            ->placeholder('Sin observaciones.')->columnSpanFull(),
+                    ]),
+
+                // Columna derecha
+                InfoSection::make('Contexto y Estado')
+                    ->columnSpan(1)
+                    ->schema([
+                        TextEntry::make('comercial.name')->label('Comercial')->badge(),
+                        TextEntry::make('lead.nombre')->label('Lead de Origen')
+                            ->placeholder('Venta directa.')->url(fn (Venta $record) => $record->lead_id ? LeadResource::getUrl('view', ['record' => $record->lead_id]) : null)->openUrlInNewTab()->icon('heroicon-m-link'),
+                        TextEntry::make('lead.procedencia.procedencia')->label('Procedencia del Lead')
+                            ->badge()->color('gray'),
+                        TextEntry::make('estado_general')->label('Estado General')->badge()
+                            ->state(function (Venta $record): string {
+                                if ($record->suscripciones()->where('estado', ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION)->exists()) {
+                                    return 'Pendiente de Activación';
+                                }
+                                if ($record->suscripciones()->where('estado', ClienteSuscripcionEstadoEnum::ACTIVA)->exists()) {
+                                    return 'Activa';
+                                }
+                                return 'Finalizada';
+                            })
+                            ->color(fn (string $state): string => match ($state) {
+                                'Pendiente de Activación' => 'warning',
+                                'Activa' => 'success',
+                                default => 'gray',
+                            }),
+                    ]),
+            ]),
+            
+            // --- BLOQUE 2: Resumen Económico ---
+            InfoSection::make('Resumen Económico')
+                ->columns(2)
+                ->schema([
+                    Grid::make(2)->schema([
+                        TextEntry::make('importe_base_sin_descuento')
+                            ->label('Importe Original (Base)')->money('EUR')->helperText('Este es el coste real de los servicios contratados incluyendo el primer mes del servicio si es recurrente.'),
+                        TextEntry::make('descuento_servicios_unicos')
+                            ->label('Dto. Servicios Únicos')->money('EUR')->color('danger'),
+                        TextEntry::make('importe_total')
+                            ->label('Importe Final (Base)')->money('EUR')->helperText('Final sin IVA del coste de los servicios con el descuento aplicado.')->weight('bold'),
+                        TextEntry::make('ahorro_total_recurrente')
+                            ->label('Ahorro Total Recurrente')->money('EUR')->color('danger')->weight('bold')
+                            ->helperText(function (Venta $record): ?string {
+                                $descuentoMensual = $record->descuento_recurrente_mensual;
+                                if ($descuentoMensual > 0) {
+                                    return '(-' . number_format($descuentoMensual, 2, ',', '.') . ' €/mes)';
+                                }
+                                return null;
+                            }),
+                    ])->columnSpan(1),
+                    Grid::make(1)->schema([
+                         TextEntry::make('importe_total_con_iva')
+                            ->label('Total a Facturar (IVA incl.)')->money('EUR')->weight('extrabold')->size('lg')->color('success'),
+                    ])->columnSpan(1),
+                ]),
+
+
+            // --- BLOQUE 3: Desglose de Servicios Vendidos ---
+            InfoSection::make('Desglose de Servicios Vendidos')
+                ->schema([
+                    RepeatableEntry::make('items')->label(false)->contained(false)
+                        ->schema([
+                            Grid::make(12)->schema([
+                                TextEntry::make('servicio.nombre')->label(false)->columnSpan(5)->html()
+                                    ->formatStateUsing(function ($state, VentaItem $record): HtmlString {
+                                        $nombreServicioHtml = e($state);
+                                        if ($record->proyecto) {
+                                            $url = ProyectoResource::getUrl('view', ['record' => $record->proyecto]);
+                                            $icon = Blade::render("<x-heroicon-s-briefcase class='h-5 w-5 text-primary-600 mr-2' />");
+                                            $nombreServicioHtml = "<a href='{$url}' target='_blank' class='text-primary-600 hover:underline font-semibold flex items-center'>{$icon}" . e($state) . "</a>";
+                                        }
+                                        $precioOriginal = number_format($record->precio_unitario, 2, ',', '.');
+                                        $textoPVP = "PVP: {$precioOriginal} €";
+                                        if ($record->servicio->tipo === ServicioTipoEnum::RECURRENTE) {
+                                            $periodicidad = $record->servicio->ciclo_facturacion?->value ?? '';
+                                            if($periodicidad) $textoPVP .= " ({$periodicidad})";
+                                        }
+                                        $precioHtml = "<div class='text-xs text-gray-500'>{$textoPVP}</div>";
+                                        return new HtmlString("<div>{$nombreServicioHtml}{$precioHtml}</div>");
+                                    }),
+                                TextEntry::make('estado_del_item')->label(false)->alignEnd()->columnSpan(3)->badge()->placeholder('---')
+                                    ->state(function (VentaItem $record) {
+                                        if ($record->proyecto) return $record->proyecto->estado;
+                                        if ($record->servicio->tipo === ServicioTipoEnum::RECURRENTE) return $record->suscripcion?->estado;
+                                        return null;
+                                    })
+                                    ->color(fn ($state): string => match ($state) {
+                                        ProyectoEstadoEnum::Pendiente => 'warning', ProyectoEstadoEnum::EnProgreso => 'primary',
+                                        ProyectoEstadoEnum::Finalizado => 'success', ProyectoEstadoEnum::Cancelado => 'danger',
+                                        ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION => 'warning',
+                                        ClienteSuscripcionEstadoEnum::ACTIVA => 'success',
+                                        default => 'gray',
+                                    })
+                                    ->formatStateUsing(fn ($state) => $state?->getLabel() ?? ''),
+                                TextEntry::make('descuento_info')->label(false)->alignEnd()->color('danger')->weight('semibold')->columnSpan(2)
+                                    ->state(function (VentaItem $record): string {
+                                        if (!$record->descuento_tipo) return '---';
+                                        $valor = number_format($record->descuento_valor, 2, ',', '.');
+                                        $texto = $record->descuento_tipo === 'porcentaje' ? "-{$valor}%" : "-{$valor} €";
+                                        if ($record->descuento_duracion_meses) $texto .= " ({$record->descuento_duracion_meses} meses)";
+                                        return $texto;
+                                    }),
+                                TextEntry::make('subtotal_aplicado')->label(false)->money('EUR')->weight('bold')->alignEnd()->columnSpan(2),
+                            ])
+                        ])
+                ])
+        ]);
+}
+
     public static function getRelations(): array
     {
         return [
@@ -805,6 +948,7 @@ public static function form(Form $form): Form
         return [
             'index' => Pages\ListVentas::route('/'),
             'create' => Pages\CreateVenta::route('/create'),
+            'view' => Pages\ViewVenta::route('/{record}'), 
             'edit' => Pages\EditVenta::route('/{record}/edit'),
         ];
     }
