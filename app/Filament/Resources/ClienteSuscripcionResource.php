@@ -18,8 +18,11 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-use Malzariey\FilamentDaterangepickerFilter\Filters\DateRangeFilter;
+use Filament\Infolists\Infolist;
+use Filament\Infolists\Components\Section as InfoSection;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\Grid as InfolistGrid;
+
 
 class ClienteSuscripcionResource extends Resource
 {
@@ -68,7 +71,9 @@ class ClienteSuscripcionResource extends Resource
 
     public static function table(Table $table): Table
     {
-        return $table->columns([
+        return $table
+         ->defaultSort('created_at', 'desc') // Ordenar por defecto
+        ->columns([
             Tables\Columns\TextColumn::make('cliente.razon_social')->searchable(),
             Tables\Columns\TextColumn::make('servicio.nombre')->searchable(),
             Tables\Columns\TextColumn::make('estado')->badge()
@@ -195,6 +200,101 @@ class ClienteSuscripcionResource extends Resource
         ]);
     }
 
+   public static function infolist(Infolist $infolist): Infolist
+{
+    return $infolist
+        ->schema([
+            InfolistGrid::make(3)->schema([
+                // --- COLUMNA IZQUIERDA (PRINCIPAL) ---
+                InfoSection::make('Detalles de la Suscripción')
+                    ->columnSpan(2)
+                    ->columns(2)
+                    ->schema([
+                        TextEntry::make('servicio.nombre')
+                            ->label('Servicio Contratado')
+                            ->weight('bold')
+                            ->size('lg')
+                            ->columnSpanFull(),
+
+                        TextEntry::make('estado')
+                            ->label('Estado Actual')
+                            ->badge()
+                            ->formatStateUsing(fn (ClienteSuscripcionEstadoEnum $state) => $state->getLabel())
+                            ->color(fn (ClienteSuscripcionEstadoEnum $state): string => match ($state) {
+                                ClienteSuscripcionEstadoEnum::ACTIVA => 'success',
+                                ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION => 'warning',
+                                ClienteSuscripcionEstadoEnum::CANCELADA, ClienteSuscripcionEstadoEnum::FINALIZADA => 'danger',
+                                default => 'gray',
+                            }),
+                        
+                        TextEntry::make('servicio.tipo')
+                            ->label('Tipo de Servicio')
+                            ->badge()
+                            ->color(fn ($state) => $state === ServicioTipoEnum::RECURRENTE ? 'info' : 'success'),
+                        
+                        TextEntry::make('precio_acordado')
+                            ->label('Precio')
+                            ->money('eur')
+                            ->helperText(function (ClienteSuscripcion $record): ?string {
+                                if ($record->servicio->tipo === ServicioTipoEnum::RECURRENTE) {
+                                    return 'Precio por ciclo de facturación';
+                                }
+                                return null;
+                            }),
+
+                        TextEntry::make('ciclo_facturacion')
+                            ->label('Periodicidad')
+                            ->badge()
+                            ->color('gray')
+                            ->visible(fn ($record) => $record->servicio->tipo === ServicioTipoEnum::RECURRENTE),
+
+                        TextEntry::make('fecha_inicio')
+                            ->label('Fecha de Inicio')
+                            ->date('d/m/Y'),
+
+                        TextEntry::make('fecha_fin')
+                            ->label('Fecha de Fin')
+                            ->date('d/m/Y')
+                            ->placeholder('Indefinido'),
+                    ]),
+
+                // --- COLUMNA DERECHA (ASIDE) ---
+                InfoSection::make('Contexto')
+                    ->columnSpan(1)
+                    ->schema([
+                        TextEntry::make('cliente.razon_social')
+                            ->label('Cliente')
+                            ->url(fn (ClienteSuscripcion $record) => ClienteResource::getUrl('view', ['record' => $record->cliente_id]))
+                            ->openUrlInNewTab()
+                            ->icon('heroicon-m-user-circle'),
+                        
+                        TextEntry::make('ventaOrigen.id')
+                            ->label('Venta de Origen')
+                            ->url(fn (ClienteSuscripcion $record) => VentaResource::getUrl('view', ['record' => $record->venta_origen_id]))
+                            ->openUrlInNewTab()
+                            ->icon('heroicon-m-shopping-cart')
+                            ->formatStateUsing(fn ($state) => "Venta #{$state}"),
+                    ]),
+            ]),
+
+            // --- SECCIÓN DE DESCUENTOS (SOLO SI EXISTE) ---
+            InfoSection::make('Condiciones del Descuento Aplicado')
+                ->visible(fn ($record) => $record->descuento_tipo)
+                ->columns(3)
+                ->schema([
+                    TextEntry::make('descuento_tipo')->label('Tipo de Descuento')->badge(),
+                    TextEntry::make('descuento_valor')->label('Valor del Descuento')
+                        ->formatStateUsing(function ($state, ClienteSuscripcion $record): string {
+                            if ($record->descuento_tipo === 'porcentaje') {
+                                return "{$state}%";
+                            }
+                            return number_format($state, 2, ',', '.') . ' €';
+                        }),
+                    TextEntry::make('descuento_valido_hasta')->label('Descuento Válido Hasta')->date('d/m/Y'),
+                    TextEntry::make('descuento_descripcion')->label('Concepto / Observaciones')->columnSpanFull(),
+                ]),
+        ]);
+}
 
     public static function getRelations(): array
     {
@@ -208,6 +308,7 @@ class ClienteSuscripcionResource extends Resource
         return [
             'index' => Pages\ListClienteSuscripcions::route('/'),
             'create' => Pages\CreateClienteSuscripcion::route('/create'),
+            'view' => Pages\ViewClienteSuscripcion::route('/{record}'), // <-- AÑADIR ESTA LÍNEA
             'edit' => Pages\EditClienteSuscripcion::route('/{record}/edit'),
         ];
     }

@@ -10,6 +10,8 @@ use Filament\Tables\Table;
 use App\Models\ClienteSuscripcion;
 use App\Enums\ClienteSuscripcionEstadoEnum;
 use App\Enums\ProyectoEstadoEnum;
+use App\Enums\ServicioTipoEnum;
+use App\Filament\Resources\ClienteSuscripcionResource;
 use App\Filament\Resources\ProyectoResource;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Database\Eloquent\Builder;
@@ -24,9 +26,74 @@ class SuscripcionesRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('servicio.nombre')
             ->columns([
-                Tables\Columns\TextColumn::make('servicio.nombre')->label('Servicio'),
-                
-                Tables\Columns\TextColumn::make('estado')->badge()
+                // Columna del Servicio (con enlace condicional a su Proyecto)
+                Tables\Columns\TextColumn::make('servicio.nombre')
+                    ->label('Servicio')
+                    ->icon(function (ClienteSuscripcion $record): ?string {
+                        // Muestra un icono si esta suscripción tiene un proyecto asociado en su venta
+                        return $record->ventaOrigen?->proyectos()
+                            ->where('servicio_id', $record->servicio_id)
+                            ->exists() ? 'heroicon-s-briefcase' : null;
+                    })
+                    ->url(function (ClienteSuscripcion $record): ?string {
+                        // Si existe un proyecto, genera una URL a su vista
+                        $proyecto = $record->ventaOrigen?->proyectos()
+                            ->where('servicio_id', $record->servicio_id)
+                            ->first();
+                        return $proyecto ? ProyectoResource::getUrl('view', ['record' => $proyecto]) : null;
+                    }, true) // true para abrir en nueva pestaña
+                      ->color(function (ClienteSuscripcion $record): string {
+                            // Comprueba si existe un proyecto asociado
+                            $tieneProyecto = $record->ventaOrigen?->proyectos()
+                                ->where('servicio_id', $record->servicio_id)
+                                ->exists();
+
+                            if ($tieneProyecto) {
+                                return 'primary'; // Azul para proyectos
+                            }
+                            
+                            // Si no tiene proyecto y es recurrente, color amarillo
+                            if ($record->servicio->tipo === ServicioTipoEnum::RECURRENTE) {
+                                return 'warning';
+                            }
+
+                            // Color por defecto para el resto (ej. servicios únicos sin proyecto)
+                            return 'gray';
+                        }),
+
+                // ▼▼▼ LA COLUMNA CORREGIDA ▼▼▼
+Tables\Columns\TextColumn::make('contexto_servicio')
+    ->label('Estado del proyecto')
+    ->badge()
+    ->placeholder('N/A') // 1. Muestra esto si el estado es nulo
+    ->state(function (ClienteSuscripcion $record) {
+        $proyecto = $record->ventaOrigen?->proyectos()
+            ->where('servicio_id', $record->servicio_id)->first();
+        
+        if ($proyecto) {
+            return $proyecto->estado;
+        }
+
+        if ($record->servicio->tipo === ServicioTipoEnum::RECURRENTE) {
+            return 'Recurrente';
+        }
+        
+        return null;
+    })
+    ->color(fn ($state): string => match ($state) {
+        ProyectoEstadoEnum::Pendiente => 'warning',
+        ProyectoEstadoEnum::EnProgreso => 'primary',
+        ProyectoEstadoEnum::Finalizado => 'success',
+        ProyectoEstadoEnum::Cancelado => 'danger',
+        'Recurrente' => 'info',
+        default => 'gray',
+    })
+    ->formatStateUsing(fn ($state) => is_string($state) ? $state : $state?->getLabel()),
+
+                // Columna del Estado (SIEMPRE el de la suscripción)
+                Tables\Columns\TextColumn::make('estado')
+                    ->label('Estado de la Suscripción/Facturacón')
+                    ->badge()
                     ->formatStateUsing(fn (ClienteSuscripcionEstadoEnum $state) => $state->getLabel())
                     ->color(fn (ClienteSuscripcionEstadoEnum $state): string => match ($state) {
                         ClienteSuscripcionEstadoEnum::ACTIVA => 'success',
@@ -35,54 +102,32 @@ class SuscripcionesRelationManager extends RelationManager
                         default => 'gray',
                     }),
 
-                // ▼▼▼ NUEVA COLUMNA INTELIGENTE ▼▼▼
-                Tables\Columns\TextColumn::make('dependencia_proyecto')
-                    ->label('Dependencia')
-                    ->html()
-                    ->state(function (ClienteSuscripcion $record): ?string {
-                        // Solo mostramos algo si la suscripción está pendiente
-                        if ($record->estado !== ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION) {
-                            return '---';
-                        }
+                Tables\Columns\TextColumn::make('precio_acordado')->label('Precio')->money('eur')
+                ->formatStateUsing(function ($state, ClienteSuscripcion $record): string {
+                    // Formateamos el precio base
+                    $precio = number_format($state, 2, ',', '.');
+                    
+                    // Si es recurrente, añadimos la periodicidad
+                    if ($record->servicio->tipo === ServicioTipoEnum::RECURRENTE) {
+                        $periodicidad = $record->ciclo_facturacion?->value ?? 'recurrente';
+                        return "{$precio} € / {$periodicidad}";
+                    }
 
-                        // Buscamos los proyectos no finalizados de la misma venta
-                        $proyectosPendientes = $record->ventaOrigen?->proyectos()
-                            ->whereNotIn('estado', [ProyectoEstadoEnum::Finalizado, ProyectoEstadoEnum::Cancelado])
-                            ->get();
-
-                        if ($proyectosPendientes->isEmpty()) {
-                            return null;
-                        }
-
-                        // Construimos el HTML para cada proyecto pendiente
-                        $htmlParts = $proyectosPendientes->map(function ($proyecto) {
-                            $url = ProyectoResource::getUrl('view', ['record' => $proyecto]);
-                            $estado = $proyecto->estado;
-                            $color = match ($estado) {
-                                ProyectoEstadoEnum::Pendiente => 'warning',
-                                ProyectoEstadoEnum::EnProgreso => 'primary',
-                                default => 'gray',
-                            };
-                            $badgeHtml = "<span class='fi-badge fi-color-{$color}'>{$estado->getLabel()}</span>";
-                            $icon = Blade::render("<x-heroicon-o-eye class='h-4 w-4' />");
-
-                            return "<div class='flex items-center justify-between w-full'>
-                                        <a href='{$url}' class='text-primary-600 hover:underline flex items-center space-x-1.5' target='_blank'>
-                                            {$icon} <span>" . e($proyecto->nombre) . "</span>
-                                        </a>
-                                        {$badgeHtml}
-                                    </div>";
-                        });
-
-                        return $htmlParts->implode('<br>');
-                    }),
-
-                Tables\Columns\TextColumn::make('precio_acordado')->label('Precio')->money('eur'),
-                Tables\Columns\TextColumn::make('fecha_inicio')->label('Fecha de Inicio')->date('d/m/Y'),
-                Tables\Columns\TextColumn::make('fecha_fin')->label('Fecha de Fin')->date('d/m/Y'),
+                    // Si no, solo devolvemos el precio
+                    return "{$precio} €";
+                }),
+                Tables\Columns\TextColumn::make('fecha_inicio')->label('Inicio')->date('d/m/Y'),
             ])
             ->actions([
-                // Aquí podríamos añadir un botón para ver la Venta de origen
+               Tables\Actions\ViewAction::make()
+    ->url(fn (ClienteSuscripcion $record): string => ClienteSuscripcionResource::getUrl('view', ['record' => $record]))
+    ->openUrlInNewTab(),
+                Tables\Actions\Action::make('ver_venta')
+                    ->label('Ver Venta')
+                    ->icon('heroicon-o-shopping-cart')
+                    ->url(fn(ClienteSuscripcion $record) => \App\Filament\Resources\VentaResource::getUrl('view', ['record' => $record->venta_origen_id]))
+                    ->openUrlInNewTab()
+                    ->color('gray'),
             ]);
     }
 }

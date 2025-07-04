@@ -26,43 +26,44 @@ class CreateCliente extends CreateRecord
      * Al cargar la página, capturamos el lead_id y comprobamos si ya existe el cliente.
      */
     public function mount(): void
-    {
-        // Guardamos el lead_id de la URL en nuestra variable.
-        $this->leadId = request()->query('lead_id');
+{
+    // Guardamos el lead_id de la URL en nuestra variable.
+    $this->leadId = request()->query('lead_id');
 
-        // Si no nos llega un lead_id, detenemos la creación.
-        if (!$this->leadId) {
-            Notification::make()
-                ->title('Acceso no permitido')
-                ->body('Solo se pueden crear clientes a partir de un Lead convertido.')
-                ->danger()
-                ->send();
-            
-            // Redirigimos al listado de leads para que se inicie el proceso correctamente.
-            $this->redirect(\App\Filament\Resources\LeadResource::getUrl('index'));
-            return;
-        }
-
-        // Comprobamos si ya existe un cliente para este lead.
-        $existing = Cliente::where('lead_id', $this->leadId)->first();
-        if ($existing) {
-            Notification::make()
-                ->body('Este lead ya tiene un cliente. Creando la venta directamente.')
-                ->info()->send();
-
-            // Si ya existe, saltamos directamente a crear la venta.
-            $this->redirect(
-                VentaResource::getUrl('create', [
-                    'cliente_id' => $existing->getKey(),
-                    'lead_id'    => $this->leadId,
-                ])
-            );
-            return;
-        }
+    // Si no nos llega un lead_id, detenemos la creación.
+    if (!$this->leadId) {
+        Notification::make()
+            ->title('Acceso no permitido')
+            ->body('Solo se pueden crear clientes a partir de un Lead convertido.')
+            ->danger()
+            ->send();
         
-        // Si no existe, continuamos con la carga normal del formulario de creación.
-        parent::mount();
+        $this->redirect(\App\Filament\Resources\LeadResource::getUrl('index'));
+        return;
     }
+
+    // ▼▼▼ LÍNEA CORREGIDA ▼▼▼
+    // Buscamos el Lead y, a través de su relación, vemos si ya tiene un cliente.
+    $existing = Lead::find($this->leadId)?->cliente;
+
+    if ($existing) {
+        Notification::make()
+            ->body('Este lead ya tiene un cliente. Creando la venta directamente.')
+            ->info()->send();
+
+        // Si ya existe, saltamos directamente a crear la venta.
+        $this->redirect(
+            VentaResource::getUrl('create', [
+                'cliente_id' => $existing->getKey(),
+                'lead_id'    => $this->leadId,
+            ])
+        );
+        return;
+    }
+    
+    // Si no existe, continuamos con la carga normal del formulario.
+    parent::mount();
+}
 
     /**
      * Después de guardar el nuevo cliente, lo vinculamos con su Lead de origen.

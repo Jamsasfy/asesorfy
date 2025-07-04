@@ -97,8 +97,7 @@ class ClienteResource extends Resource implements HasShieldPermissions
         return $form
         ->schema([
               // 1) Ocultamos los dos IDs y los precargamos desde la query
-                Hidden::make('lead_id')
-              ->default(fn (): ?int => request()->query('lead_id')),
+            
               Hidden::make('comercial_id')
                 ->default(fn() => auth()->id()),
               /*   Hidden::make('comercial_id')

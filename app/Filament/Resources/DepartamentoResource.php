@@ -84,6 +84,8 @@ class DepartamentoResource extends Resource implements HasShieldPermissions
             // Columna extra muy útil: cuenta cuántos trabajadores tiene el depto.
            TextColumn::make('trabajadores_count')
                 ->label('Nº de Trabajadores')
+                ->badge()
+                ->color('primary')
                 // Usamos state() para calcular el valor manualmente
                 ->state(function (Departamento $record): int {
                     return $record->trabajadores()->count();
@@ -115,7 +117,7 @@ class DepartamentoResource extends Resource implements HasShieldPermissions
     public static function getRelations(): array
     {
         return [
-            //
+        RelationManagers\TrabajadoresRelationManager::class,
         ];
     }
 
