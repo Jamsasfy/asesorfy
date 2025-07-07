@@ -42,8 +42,7 @@ use Filament\Infolists\Components\RepeatableEntry;
 use Illuminate\Support\HtmlString;
 use App\Models\Proyecto;
 use App\Enums\ProyectoEstadoEnum;
-
-
+use Filament\Forms\Components\Toggle;
 use Illuminate\Support\Facades\Blade;
 
 
@@ -117,356 +116,363 @@ class VentaResource extends Resource implements HasShieldPermissions
 
     
 public static function form(Form $form): Form
-    {
-        return $form
-            ->schema([
-                Section::make('Datos de la Venta')
-                    ->columns(3)
-                    ->schema([
-                        Select::make('cliente_id')
-                            ->label('Cliente')
-                            ->relationship('cliente', 'razon_social')
-                            ->required()
-                            ->default(fn () => request()->query('cliente_id'))
-                            ->searchable()
-                            ->preload()
-                            ->columnSpan(1)
-                            ->reactive()  // <- obligamos a que refresque los dependientes                            
-                            ->suffixIcon('heroicon-m-user'),
-                        
-                        Select::make('lead_id')
-                            ->label('Lead de Origen')
-                            ->relationship('lead', 'nombre')
-                            ->nullable(false) // Campo obligatorio
-                            ->required() // Es obligatorio
-                            ->searchable()
-                           ->default(fn () => request()->query('lead_id'))
-                            // ->default(fn ($livewire) => $livewire->getRequest()->query('lead_id'))
-                            ->preload()
-                            ->columnSpan(1)
-                            ->suffixIcon('heroicon-m-identification'),
+{
+    return $form
+        ->schema([
+            Section::make('Datos de la Venta')
+                ->columns(3)
+                ->schema([
+                    Select::make('cliente_id')
+                        ->label('Cliente')
+                        ->relationship('cliente', 'razon_social')
+                        ->required()
+                        ->default(fn () => request()->query('cliente_id'))
+                        ->searchable()
+                        ->preload()
+                        ->columnSpan(1)
+                        ->reactive()
+                        ->suffixIcon('heroicon-m-user'),
 
-                        Select::make('user_id')
-                            ->label('Comercial')
-                            ->relationship('comercial', 'name')
-                            ->default(Auth::id())
-                            ->required()
-                            ->default(fn() => auth()->id())
-                            ->searchable()
-                            ->preload()
-                            ->columnSpan(1)
-                            ->suffixIcon('heroicon-m-briefcase'),
+                    Select::make('lead_id')
+                        ->label('Lead de Origen')
+                        ->relationship('lead', 'nombre')
+                        ->nullable(false)
+                        ->required()
+                        ->searchable()
+                        ->default(fn () => request()->query('lead_id'))
+                        ->preload()
+                        ->columnSpan(1)
+                        ->suffixIcon('heroicon-m-identification'),
 
-                        DateTimePicker::make('fecha_venta')
-                            ->label('Fecha de Venta')
-                            ->native(false)
-                            ->required()
-                            ->default(now())
-                            ->columnSpan(1),
+                    Select::make('user_id')
+                        ->label('Comercial')
+                        ->relationship('comercial', 'name')
+                        ->default(Auth::id())
+                        ->required()
+                        ->searchable()
+                        ->preload()
+                        ->columnSpan(1)
+                        ->suffixIcon('heroicon-m-briefcase'),
 
-                        TextInput::make('importe_total')
-                            ->label('Importe Total de la Venta')
-                            ->suffix('€')
-                            ->readOnly()
-                            ->disabled()
-                            ->dehydrated(false)
-                            ->columnSpan(1),
-                        
-                        Textarea::make('observaciones')
-                            ->label('Observaciones de la Venta')
-                            ->nullable()
-                            ->rows(2)
-                            ->columnSpanFull(),
-                    ]),
+                    DateTimePicker::make('fecha_venta')
+                        ->label('Fecha de Venta')
+                        ->native(false)
+                        ->required()
+                        ->default(now())
+                        ->columnSpan(1),
 
-                Section::make('Items de la Venta')
-                    ->description('Añade los servicios incluidos en esta venta.')
-                    ->schema([
-                        Repeater::make('items')
-                            ->relationship('items')
-                            ->afterStateHydrated(function (Get $get, Set $set) {
-                                self::updateTotals($get, $set);
-                            })
-                            ->schema([
-                      Select::make('servicio_id')
-    ->label('Servicio')
-    ->relationship(
-        'servicio',
-        'nombre',
-        function (Builder $query, Get $get) {
-            $clienteId = $get('../../cliente_id');
-            if (! $clienteId) {
-                return;
-            }
+                    TextInput::make('importe_total')
+                        ->label('Importe Total de la Venta')
+                        ->suffix('€')
+                        ->readOnly()
+                        ->disabled()
+                        ->dehydrated(false)
+                        ->columnSpan(1),
 
-            // ¿Tiene YA alguna suscripción principal activa o pendiente?
-            $tienePrincipal = ClienteSuscripcion::query()
-                ->where('cliente_id', $clienteId)
-                ->where('es_tarifa_principal', true)
-                ->whereIn('estado', [
-                    ClienteSuscripcionEstadoEnum::ACTIVA->value,
-                    ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION->value,
-                ])
-                ->exists();
+                    Textarea::make('observaciones')
+                        ->label('Observaciones de la Venta')
+                        ->nullable()
+                        ->rows(2)
+                        ->columnSpanFull(),
+                ]),
 
-            if ($tienePrincipal) {
-                // Oculta **todos** los servicios que sean tarifa principal
-                $query->where('es_tarifa_principal', false);
-            }
-        }
-    )
-    ->required()
-    ->searchable()
-    ->preload()
-    ->distinct()
-    ->live()
-    ->columnSpan(2)
-    ->afterStateUpdated(function (Get $get, Set $set, ?int $state) {
-        if ($state && $servicio = Servicio::find($state)) {
-            $set('precio_unitario', $servicio->precio_base);
-        } else {
-            $set('precio_unitario', 0);
-        }
-        self::updateTotals($get, $set);
-    }),
-
-                                TextInput::make('cantidad')
-                                    ->label('Cantidad')
-                                    ->numeric()->type('text')->inputMode('numeric')
-                                    ->required()
-                                    ->default(1)
-                                    ->minValue(1)
-                                    ->live()
-                                    ->columnSpan(1)
-                                    ->afterStateUpdated(fn (Get $get, Set $set) => self::updateTotals($get, $set)),
-
-                                TextInput::make('precio_unitario')
-                                    ->label('Precio Base (€)')
-                                    ->helperText('Precio unitario original del servicio, sin IVA ni descuentos.')
-                                    ->numeric()->type('text')->inputMode('decimal')
-                                    ->required()
-                                    ->suffix('€')
-                                    ->columnSpan(1)
-                                    ->live()
-                                    ->afterStateUpdated(fn (Get $get, Set $set) => self::updateTotals($get, $set)),
-
-                                TextInput::make('subtotal')
-                                    ->label('Subtotal Base (€)')
-                                    ->helperText('Subtotal de la línea, sin descuentos ni IVA.')
-                                    ->numeric()->type('text')
-                                    ->readOnly()
-                                    ->suffix('€')
-                                    ->columnSpan(1),
-
-                                Forms\Components\Hidden::make('precio_unitario_aplicado') 
-                                    ->dehydrated(true), 
-                                
-                                Forms\Components\Hidden::make('subtotal_aplicado') 
-                                    ->dehydrated(true), 
-                                
-                                Forms\Components\Hidden::make('subtotal_aplicado_con_iva') 
-                                    ->dehydrated(true), 
-
-
-                                TextInput::make('subtotal_con_iva') 
-                                    ->label('Subtotal con IVA (Base)')
-                                    ->numeric()->type('text')
-                                    ->readOnly()->suffix('€')
-                                    ->columnSpan(1)
-                                    ->dehydrated(true),
-                                    
-                             DatePicker::make('fecha_inicio_servicio')
-                                    ->label('Inicio Servicio')
-                                    ->native(false)
-                                    ->nullable()
-                                    ->required()
-                                    ->visible(function (Get $get) {
-                                        $servicioId = $get('servicio_id');
-                                        if (! $servicioId) return false;
-
-                                        $servicio = \App\Models\Servicio::find($servicioId);
-                                        if (! $servicio || $servicio->tipo->value !== 'recurrente') {
-                                            return false;
+            Section::make('Items de la Venta')
+                ->description('Añade los servicios incluidos en esta venta.')
+                ->schema([
+                    Repeater::make('items')
+                        ->relationship('items')
+                        ->afterStateHydrated(function (Get $get, Set $set) {
+                            self::updateTotals($get, $set);
+                        })
+                        ->schema([
+                            Select::make('servicio_id')
+                                ->label('Servicio')
+                                ->relationship(
+                                    'servicio',
+                                    'nombre',
+                                    function (Builder $query, Get $get) {
+                                        $clienteId = $get('../../cliente_id');
+                                        if (!$clienteId) {
+                                            return;
                                         }
 
-                                        // Buscar si hay algún otro item con servicio que requiere proyecto
-                                        $todosLosItems = $get('../../items') ?? [];
-
-                                        foreach ($todosLosItems as $index => $item) {
-                                            if ($get("../../items.{$index}.servicio_id") == $servicioId) {
-                                                continue; // saltar el propio item
-                                            }
-
-                                            $servicioRelacionado = \App\Models\Servicio::find($item['servicio_id'] ?? null);
-                                            if ($servicioRelacionado && $servicioRelacionado->requiere_proyecto_activacion) {
-                                                return false; // Hay otro item que requiere proyecto => no mostrar el campo
-                                            }
-                                        }
-
-                                        // No hay proyectos => sí mostrar el campo y hacerlo obligatorio
-                                        return true;
-                                    })
-                                    ->afterStateUpdated(function (Get $get, Set $set, $state) {
-                                        $duracion = (int) $get('descuento_duracion_meses');
-
-                                        if ($state && $duracion > 0) {
-                                            $fechaFin = Carbon::parse($state)
-                                                ->addMonths($duracion - 1)
-                                                ->endOfMonth()
-                                                ->format('Y-m-d');
-
-                                            $set('descuento_valido_hasta', $fechaFin);
-                                        }
-                                    })
-                                ->columnSpan(2),
-
-                                Textarea::make('observaciones_item')
-                                    ->label('Notas del servicio')
-                                    ->nullable()
-                                    ->rows(1)
-                                    ->columnSpan(4),
-
-                                Section::make('Aplicar Descuento')
-                                    ->collapsible()
-                                    ->collapsed()
-                                    ->schema([
-                                        Select::make('descuento_tipo')
-                                            ->label('Tipo de Descuento')
-                                            ->placeholder('Sin descuento')
-                                            ->options([
-                                                'porcentaje' => 'Porcentaje (%)',
-                                                'fijo'       => 'Cantidad Fija (€)',
-                                                'precio_final' => 'Precio Final (€)',
+                                        $tienePrincipal = ClienteSuscripcion::query()
+                                            ->where('cliente_id', $clienteId)
+                                            ->where('es_tarifa_principal', true)
+                                            ->whereIn('estado', [
+                                                ClienteSuscripcionEstadoEnum::ACTIVA->value,
+                                                ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION->value,
                                             ])
-                                            ->nullable()
-                                            ->live()
-                                            ->columnSpan(2)
-                                            ->dehydrated(true)
-                                            ->afterStateUpdated(function(Get $get, Set $set) {
-                                                $set('descuento_valor', null); // Esto ya pone el valor en null en el formulario
-                                                $set('descuento_duracion_meses', null); // <<< AÑADIDO: Limpiar también la duración
-                                                $set('descuento_valido_hasta', null); // <<< AÑADIDO: Limpiar también la fecha
-                                                $set('observaciones_descuento', null); // <<< AÑADIDO: Limpiar también la descripción
-                                                self::updateTotals($get, $set);
-                                            }),
+                                            ->exists();
 
-                                        TextInput::make('descuento_valor')
-                                            ->label('Valor del Descuento')
-                                            ->numeric()->type('text')->inputMode('decimal')
-                                            ->nullable()
-                                            ->live()
-                                            ->columnSpan(2)
-                                            ->visible(fn (Get $get) => !empty($get('descuento_tipo')))
-                                            ->suffix(fn(Get $get):?string => match($get('descuento_tipo')) {
-                                                'porcentaje' => '%',
-                                                'fijo', 'precio_final' => '€',
-                                                default => null
-                                            })
-                                            ->helperText(fn(Get $get):?string => match($get('descuento_tipo')) {
-                                                'porcentaje' => 'Introduce solo el número del porcentaje (ej: 50).',
-                                                'fijo'       => 'Introduce la cantidad fija que se descontará.',
-                                                'precio_final' => 'Introduce el precio final que tendrá esta línea.',
-                                                default      => null
-                                            })
-                                            ->dehydrated(true)
-                                            
-                                            ->afterStateUpdated(fn (Get $get, Set $set) => self::updateTotals($get, $set)),
-                                           
+                                        if ($tienePrincipal) {
+                                            $query->where('es_tarifa_principal', false);
+                                        }
+                                    }
+                                )
+                                ->required()
+                                ->searchable()
+                                ->preload()
+                                ->distinct()
+                                ->live()
+                                ->columnSpan(2)
+                                ->afterStateUpdated(function (Get $get, Set $set, ?int $state) {
+                                    if ($state && $servicio = Servicio::find($state)) {
+                                        $set('precio_unitario', $servicio->precio_base);
+                                    } else {
+                                        $set('precio_unitario', 0);
+                                    }
+                                    self::updateTotals($get, $set);
+                                }),
+
+                            TextInput::make('nombre_personalizado')
+                                ->label('Nombre del Servicio (editable)')
+                                ->placeholder('Ej. Servicio jurídico especial...')
+                                ->helperText('Solo si el servicio permite nombre personalizado.')
+                                ->columnSpan(2)
+                                ->required()
+                                ->visible(fn (Get $get) => optional(Servicio::find($get('servicio_id')))->es_editable),
+
+                            Toggle::make('requiere_proyecto')
+                                ->label('¿Este servicio requiere proyecto?')
+                                ->helperText('Se generará un proyecto si está activo.')
+                                ->columnSpan(2)
+                                ->default(false)
+                                ->visible(fn (Get $get) => optional(Servicio::find($get('servicio_id')))->es_editable),
+
+                            TextInput::make('cantidad')
+                                ->label('Cantidad')
+                                ->numeric()->type('text')->inputMode('numeric')
+                                ->required()
+                                ->default(1)
+                                ->minValue(1)
+                                ->live()
+                                ->columnSpan(1)
+                                ->afterStateUpdated(fn (Get $get, Set $set) => self::updateTotals($get, $set)),
+
+                            TextInput::make('precio_unitario')
+                                ->label('Precio Base (€)')
+                                ->helperText('Precio unitario original del servicio, sin IVA ni descuentos.')
+                                ->numeric()->type('text')->inputMode('decimal')
+                                ->required()
+                                ->suffix('€')
+                                ->columnSpan(1)
+                                ->live()
+                                ->afterStateUpdated(fn (Get $get, Set $set) => self::updateTotals($get, $set)),
+
+                            TextInput::make('subtotal')
+                                ->label('Subtotal Base (€)')
+                                ->helperText('Subtotal de la línea, sin descuentos ni IVA.')
+                                ->numeric()->type('text')
+                                ->readOnly()
+                                ->suffix('€')
+                                ->columnSpan(1),
+
+                            Forms\Components\Hidden::make('precio_unitario_aplicado')->dehydrated(true),
+                            Forms\Components\Hidden::make('subtotal_aplicado')->dehydrated(true),
+                            Forms\Components\Hidden::make('subtotal_aplicado_con_iva')->dehydrated(true),
+
+                            TextInput::make('subtotal_con_iva')
+                                ->label('Subtotal con IVA (Base)')
+                                ->numeric()->type('text')
+                                ->readOnly()->suffix('€')
+                                ->columnSpan(1)
+                                ->dehydrated(true),
+
+                           DatePicker::make('fecha_inicio_servicio')
+                        ->label('Inicio Servicio')
+                        ->native(false)
+                        ->nullable()
+                        ->required(function (Get $get): bool {
+                            // --- LÓGICA DE VISIBILIDAD MOVIDA A 'required' ---
+                            // 1. Si el servicio actual no es recurrente, el campo no es obligatorio.
+                            $servicioId = $get('servicio_id');
+                            if (!$servicioId) return false;
+                            
+                            $servicio = Servicio::find($servicioId);
+                            if (!$servicio || $servicio->tipo->value !== 'recurrente') {
+                                return false;
+                            }
+
+                            // 2. Comprobamos si CUALQUIER item en la venta requiere un proyecto.
+                            $todosLosItems = $get('../../items') ?? [];
+                            foreach ($todosLosItems as $itemState) {
+                                $itemServicioId = $itemState['servicio_id'] ?? null;
+                                if (!$itemServicioId) continue;
+                                
+                                $itemServicio = Servicio::find($itemServicioId);
+                                if (!$itemServicio) continue;
+                                
+                                // La nueva condición que comprueba ambos casos
+                                $esteItemRequiereProyecto = $itemServicio->es_editable
+                                    ? ($itemState['requiere_proyecto'] ?? false)
+                                    : $itemServicio->requiere_proyecto_activacion;
+
+                                if ($esteItemRequiereProyecto) {
+                                    // Si encontramos un proyecto, el campo NO es obligatorio.
+                                    return false; 
+                                }
+                            }
+
+                            // 3. Si no se encontró ningún proyecto en toda la venta, el campo SÍ es obligatorio.
+                            return true;
+                        })
+                        ->afterStateUpdated(function (Get $get, Set $set, $state) {
+                            $duracion = (int) $get('descuento_duracion_meses');
+
+                            if ($state && $duracion > 0) {
+                                $fechaFin = Carbon::parse($state)
+                                    ->addMonths($duracion - 1)
+                                    ->endOfMonth()
+                                    ->format('Y-m-d');
+
+                                $set('descuento_valido_hasta', $fechaFin);
+                            }
+                        })
+                        ->columnSpan(2),
+
+                            Textarea::make('observaciones_item')
+                                ->label('Notas del servicio')
+                                ->nullable()
+                                ->rows(1)
+                                ->columnSpan(4),
+
+                           Section::make('Aplicar Descuento')
+    ->collapsible()
+    ->collapsed()
+    ->schema([
+        Select::make('descuento_tipo')
+            ->label('Tipo de Descuento')
+            ->placeholder('Sin descuento')
+            ->options([
+                'porcentaje' => 'Porcentaje (%)',
+                'fijo'       => 'Cantidad Fija (€)',
+                'precio_final' => 'Precio Final (€)',
+            ])
+            ->nullable()
+            ->live()
+            ->columnSpan(2)
+            ->dehydrated(true)
+            ->afterStateUpdated(function(Get $get, Set $set) {
+                $set('descuento_valor', null);
+                $set('descuento_duracion_meses', null);
+                $set('descuento_valido_hasta', null);
+                $set('observaciones_descuento', null);
+                VentaResource::updateTotals($get, $set);
+            }),
+
+        TextInput::make('descuento_valor')
+            ->label('Valor del Descuento')
+            ->numeric()->type('text')->inputMode('decimal')
+            ->nullable()
+            ->live()
+            ->columnSpan(2)
+            ->visible(fn (Get $get) => !empty($get('descuento_tipo')))
+            ->suffix(fn(Get $get):?string => match($get('descuento_tipo')) {
+                'porcentaje' => '%',
+                'fijo', 'precio_final' => '€',
+                default => null
+            })
+            ->helperText(fn(Get $get):?string => match($get('descuento_tipo')) {
+                'porcentaje' => 'Introduce solo el número del porcentaje (ej: 50).',
+                'fijo'       => 'Introduce la cantidad fija que se descontará.',
+                'precio_final' => 'Introduce el precio final que tendrá esta línea.',
+                default      => null
+            })
+            ->dehydrated(true)
+            ->afterStateUpdated(fn (Get $get, Set $set) => VentaResource::updateTotals($get, $set)),
+
+        TextInput::make('descuento_duracion_meses')
+            ->label('Duración (meses)')
+            ->numeric()
+            ->type('text')
+            ->inputMode('numeric')
+            ->nullable()
+            ->columnSpan(1)
+            ->live()
+            ->dehydrated(true)
+            ->visible(function (Get $get): bool {
+                if (empty($get('descuento_tipo')) || !$servicioId = $get('servicio_id')) {
+                    return false;
+                }
+                return \App\Models\Servicio::find($servicioId)?->tipo?->value === 'recurrente';
+            })
+            ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
+                $fechaInicio = $get('fecha_inicio_servicio');
+                $duracion = (int) $state;
+
+                if ($fechaInicio && $duracion > 0) {
+                    $fechaFin = \Carbon\Carbon::parse($fechaInicio)
+                        ->addMonths($duracion - 1)
+                        ->endOfMonth()
+                        ->format('Y-m-d');
+
+                    $set('descuento_valido_hasta', $fechaFin);
+                } else {
+                    $set('descuento_valido_hasta', null);
+                }
+
+                VentaResource::updateTotals($get, $set);
+            }),
+
+        DatePicker::make('descuento_valido_hasta')
+            ->label('Dto Válido Hasta')
+            ->native(false)
+            ->nullable()
+            ->readOnly()
+            ->columnSpan(2)
+            ->placeholder('Se calcula automáticamente')
+            ->visible(function (Get $get): bool {
+                if (empty($get('descuento_tipo')) || !$servicioId = $get('servicio_id')) {
+                    return false;
+                }
+                return \App\Models\Servicio::find($servicioId)?->tipo?->value === 'recurrente';
+            })
+            ->dehydrated(true),
+
+        Textarea::make('observaciones_descuento') 
+            ->label('Descripción del Descuento')
+            ->nullable()
+            ->columnSpan(3)
+            ->visible(fn (Get $get) => !empty($get('descuento_tipo')))
+            ->dehydrated(true),
+
+        TextInput::make('subtotal_aplicado') 
+            ->label('Final (sin IVA)')
+            ->numeric()->type('text')
+            ->readOnly()
+            ->columnSpan(1)
+            ->suffix('€')
+            ->visible(fn (Get $get) => !empty($get('descuento_tipo'))),
+
+        TextInput::make('subtotal_aplicado_con_iva') 
+            ->label('Final (con IVA)')
+            ->numeric()->type('text')
+            ->readOnly()
+            ->columnSpan(1)
+            ->suffix('€')
+            ->visible(fn (Get $get) => !empty($get('descuento_tipo'))),
+    ])
+    ->columns(12)
+    ->columnSpanFull(),
 
 
-                                        TextInput::make('descuento_duracion_meses')
-                                            ->label('Duración (meses)')
-                                            ->numeric()
-                                            ->type('text')
-                                            ->inputMode('numeric')
-                                            ->nullable()
-                                            ->columnSpan(1)
-                                            ->live()
-                                            ->dehydrated(true)
-                                            ->visible(function (Get $get): bool {
-                                                if (empty($get('descuento_tipo')) || !$servicioId = $get('servicio_id')) {
-                                                    return false;
-                                                }
-                                                return Servicio::find($servicioId)?->tipo?->value === 'recurrente'; 
-                                            })
-                                            ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
-                                                $fechaInicio = $get('fecha_inicio_servicio');
-                                                $duracion = (int) $state;
+                        ])
+                        ->columns(12)
+                        ->defaultItems(1)
+                        ->reorderable(true)
+                        ->collapsible()
+                        ->cloneable()
+                        ->minItems(1)
+                        ->addActionLabel('Añadir Servicio')
+                        ->live(),
 
-                                                if ($fechaInicio && $duracion > 0) {
-                                                    $fechaFin = Carbon::parse($fechaInicio)
-                                                        ->addMonths($duracion - 1)
-                                                        ->endOfMonth()
-                                                        ->format('Y-m-d');
+                        
+                ])
+                ->columnSpanFull(),
+        ]);
+}
 
-                                                    $set('descuento_valido_hasta', $fechaFin);
-                                                } else {
-                                                    $set('descuento_valido_hasta', null);
-                                                }
-
-                                                self::updateTotals($get, $set);
-                                            }),
-
-
-
-                                        DatePicker::make('descuento_valido_hasta')
-                                            ->label('Dto Válido Hasta')
-                                            ->native(false)
-                                            ->nullable()
-                                            ->readOnly()
-                                            ->columnSpan(2)
-                                            ->placeholder('Se calcula automáticamente')
-                                            ->visible(function (Get $get): bool {
-                                                if (empty($get('descuento_tipo')) || !$servicioId = $get('servicio_id')) {
-                                                    return false;
-                                                }
-                                                // <<< CORRECCIÓN AQUI: $item->servicio->tipo->value === 'recurrente' (sin el namespace completo delante)
-                                                return Servicio::find($servicioId)?->tipo?->value === 'recurrente'; 
-                                            })
-                                            ->dehydrated(true)
-                                           ,
-                                          
-
-                                            
-                                        Textarea::make('observaciones_descuento') 
-                                            ->label('Descripción del Descuento')
-                                            ->nullable()
-                                            ->columnSpan(3)
-                                            ->visible(fn (Get $get) => !empty($get('descuento_tipo')))
-                                            ->dehydrated(true)
-                                          ,
-
-
-                                        TextInput::make('subtotal_aplicado') 
-                                            ->label('Final (sin IVA)')
-                                            ->numeric()->type('text')
-                                            ->readOnly()
-                                            ->columnSpan(1)
-                                            ->suffix('€')
-                                            ->visible(fn (Get $get) => !empty($get('descuento_tipo'))),
-
-                                        TextInput::make('subtotal_aplicado_con_iva') 
-                                            ->label('Final (con IVA)')
-                                            ->numeric()->type('text')
-                                            ->readOnly()
-                                            ->columnSpan(1)
-                                            ->suffix('€')
-                                            ->visible(fn (Get $get) => !empty($get('descuento_tipo'))),
-                                    ])->columns(12)->columnSpanFull(),
-                            ])
-                            ->columns(12)
-                            ->defaultItems(1)
-                            ->reorderable(true)
-                            ->collapsible()
-                            ->cloneable()
-                            ->minItems(1)
-                            ->addActionLabel('Añadir Servicio')
-                            ->live(), 
-                    ])
-                    ->columnSpanFull(),
-                                        ]);
-            
-    }
 
     private static function updateTotals(Get $get, Set $set): void
     {
@@ -890,21 +896,29 @@ public static function infolist(Infolist $infolist): Infolist
                     RepeatableEntry::make('items')->label(false)->contained(false)
                         ->schema([
                             Grid::make(12)->schema([
-                                TextEntry::make('servicio.nombre')->label(false)->columnSpan(5)->html()
+                                TextEntry::make('nombre_final') // <-- CAMBIO CLAVE AQUÍ
+                                    ->label(false)
+                                    ->columnSpan(5)
+                                    ->html()
                                     ->formatStateUsing(function ($state, VentaItem $record): HtmlString {
+                                        // Ahora la variable $state ya contiene el nombre correcto (personalizado o el original)
                                         $nombreServicioHtml = e($state);
+
                                         if ($record->proyecto) {
-                                            $url = ProyectoResource::getUrl('view', ['record' => $record->proyecto]);
-                                            $icon = Blade::render("<x-heroicon-s-briefcase class='h-5 w-5 text-primary-600 mr-2' />");
+                                            $url = \App\Filament\Resources\ProyectoResource::getUrl('view', ['record' => $record->proyecto]);
+                                            $icon = \Illuminate\Support\Facades\Blade::render("<x-heroicon-s-briefcase class='h-5 w-5 text-primary-600 mr-2' />");
                                             $nombreServicioHtml = "<a href='{$url}' target='_blank' class='text-primary-600 hover:underline font-semibold flex items-center'>{$icon}" . e($state) . "</a>";
                                         }
+
+                                        // El resto de tu lógica para mostrar el precio no necesita cambios
                                         $precioOriginal = number_format($record->precio_unitario, 2, ',', '.');
                                         $textoPVP = "PVP: {$precioOriginal} €";
-                                        if ($record->servicio->tipo === ServicioTipoEnum::RECURRENTE) {
+                                        if ($record->servicio->tipo === \App\Enums\ServicioTipoEnum::RECURRENTE) {
                                             $periodicidad = $record->servicio->ciclo_facturacion?->value ?? '';
                                             if($periodicidad) $textoPVP .= " ({$periodicidad})";
                                         }
                                         $precioHtml = "<div class='text-xs text-gray-500'>{$textoPVP}</div>";
+
                                         return new HtmlString("<div>{$nombreServicioHtml}{$precioHtml}</div>");
                                     }),
                                 TextEntry::make('estado_del_item')->label(false)->alignEnd()->columnSpan(3)->badge()->placeholder('---')

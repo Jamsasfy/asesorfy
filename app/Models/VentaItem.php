@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -29,6 +30,10 @@ class VentaItem extends Model
         'descuento_valido_hasta',
         'observaciones_descuento',  // Campo para la descripción del descuento
         'subtotal_aplicado_con_iva', // <<< NUEVO CAMPO AÑADIDO
+        'requiere_proyecto',
+        'nombre_personalizado',
+
+
 
     ];
 
@@ -43,6 +48,8 @@ class VentaItem extends Model
         'descuento_duracion_meses' => 'integer',
         'descuento_valido_hasta'   => 'date',
         'subtotal_aplicado_con_iva' => 'decimal:2',
+            'requiere_proyecto' => 'boolean',
+
         
     ];
 
@@ -75,80 +82,90 @@ public function suscripcion(): HasOne
 
    protected static function booted(): void
     {
-        // <<< CAMBIO CLAVE AQUI: Integración del hook 'saving'
-       static::saving(function (VentaItem $ventaItem) {
-                    // Limpiar campos de descuento si no hay tipo definido
-                    if (empty($ventaItem->descuento_tipo)) {
-                        $ventaItem->descuento_valor = null;
-                        $ventaItem->descuento_duracion_meses = null;
-                        $ventaItem->descuento_valido_hasta = null;
-                        $ventaItem->observaciones_descuento = null;
+        static::saving(function (VentaItem $ventaItem) {
+            // Limpiar campos de descuento si no hay tipo definido
+            if (empty($ventaItem->descuento_tipo)) {
+                $ventaItem->descuento_valor = null;
+                $ventaItem->descuento_duracion_meses = null;
+                $ventaItem->descuento_valido_hasta = null;
+                $ventaItem->observaciones_descuento = null;
+            }
+
+            // Limpiar campos vacíos si son string vacíos
+            foreach (['descuento_valor', 'descuento_duracion_meses', 'descuento_valido_hasta', 'observaciones_descuento'] as $campo) {
+                if ($ventaItem->{$campo} === '') {
+                    $ventaItem->{$campo} = null;
+                }
+            }
+
+            // ▼▼▼ LÓGICA DE CÁLCULO DE FECHA AÑADIDA ▼▼▼
+            if ($ventaItem->fecha_inicio_servicio && $ventaItem->descuento_duracion_meses > 0) {
+                $ventaItem->descuento_valido_hasta = Carbon::parse($ventaItem->fecha_inicio_servicio)
+                    ->addMonths($ventaItem->descuento_duracion_meses - 1)
+                    ->endOfMonth();
+            } else {
+                // Si no hay duración o fecha de inicio, nos aseguramos de que el campo esté nulo.
+                $ventaItem->descuento_valido_hasta = null;
+            }
+
+            // 🧠 Cálculo de precio aplicado y subtotal (tu lógica original)
+            if (!is_null($ventaItem->precio_unitario)) {
+                $cantidad = (float)($ventaItem->cantidad ?? 1);
+                $precioUnitario = (float)$ventaItem->precio_unitario;
+                $subtotal = $cantidad * $precioUnitario;
+                $precioFinal = $subtotal;
+
+                if (!empty($ventaItem->descuento_tipo) && is_numeric($ventaItem->descuento_valor)) {
+                    switch ($ventaItem->descuento_tipo) {
+                        case 'porcentaje':
+                            $precioFinal = $subtotal - ($subtotal * ($ventaItem->descuento_valor / 100));
+                            break;
+                        case 'fijo':
+                            $precioFinal = $subtotal - $ventaItem->descuento_valor;
+                            break;
+                        case 'precio_final':
+                            $precioFinal = $ventaItem->descuento_valor;
+                            break;
                     }
+                }
 
-                    // Limpiar campos vacíos si son string vacíos
-                    foreach (['descuento_valor', 'descuento_duracion_meses', 'descuento_valido_hasta', 'observaciones_descuento'] as $campo) {
-                        if ($ventaItem->{$campo} === '') {
-                            $ventaItem->{$campo} = null;
-                        }
-                    }
+                $precioFinal = max(0, $precioFinal);
+                $ventaItem->precio_unitario_aplicado = round($precioFinal / max(1, $cantidad), 4);
+                $ventaItem->subtotal_aplicado = round($precioFinal, 2);
+            }
+        });
 
-                    // 🧠 Cálculo de precio aplicado y subtotal
-                    if (!is_null($ventaItem->precio_unitario)) {
-                        $cantidad = (float)($ventaItem->cantidad ?? 1);
-                        $precioUnitario = (float)$ventaItem->precio_unitario;
-                        $subtotal = $cantidad * $precioUnitario;
-                        $precioFinal = $subtotal;
-
-                        if (!empty($ventaItem->descuento_tipo) && is_numeric($ventaItem->descuento_valor)) {
-                            switch ($ventaItem->descuento_tipo) {
-                                case 'porcentaje':
-                                    $precioFinal = $subtotal - ($subtotal * ($ventaItem->descuento_valor / 100));
-                                    break;
-                                case 'fijo':
-                                    $precioFinal = $subtotal - $ventaItem->descuento_valor;
-                                    break;
-                                case 'precio_final':
-                                    $precioFinal = $ventaItem->descuento_valor;
-                                    break;
-                            }
-                        }
-
-                        // Aplicar límites
-                        $precioFinal = max(0, $precioFinal);
-                        $ventaItem->precio_unitario_aplicado = round($precioFinal / max(1, $cantidad), 4);
-                        $ventaItem->subtotal_aplicado = round($precioFinal, 2);
-                    }
-                });
-
-
-        // Tus hooks existentes (CREATED, UPDATED, DELETED) - SIN CAMBIOS AQUI
+        // Tus otros hooks (created, updated, deleted) se quedan como están
         static::created(function (VentaItem $ventaItem) {
             $ventaItem->venta->updateTotal();
         });
 
         static::updated(function (VentaItem $ventaItem) {
-            // Solo actualizar si alguno de los campos que afectan al total aplicado cambiaron
             if ($ventaItem->isDirty([
-                'cantidad',
-                'precio_unitario',
-                'precio_unitario_aplicado', 
-                'subtotal_aplicado', // Incluir este
-                'subtotal_aplicado_con_iva', // Incluir este
-                'descuento_tipo',
-                'descuento_valor',
-                'descuento_duracion_meses',
-                'descuento_valido_hasta',
-                'observaciones_descuento', // Incluir este
-                'observaciones_item', // Incluir este
-                'fecha_inicio_servicio', // Incluir este
+                'cantidad', 'precio_unitario', 'precio_unitario_aplicado', 
+                'subtotal_aplicado', 'subtotal_aplicado_con_iva', 'descuento_tipo', 
+                'descuento_valor', 'descuento_duracion_meses', 'descuento_valido_hasta',
+                'observaciones_descuento', 'observaciones_item', 'fecha_inicio_servicio',
             ])) {
                 $ventaItem->venta->updateTotal();
             }
         });
 
         static::deleted(function (VentaItem $ventaItem) {
-            $ventaItem->venta->updateTotal(); // Actualiza el total al eliminar un item
+            $ventaItem->venta->updateTotal();
         });
     }
+
+    /**
+ * Devuelve el nombre final del servicio, usando el personalizado si existe.
+ */
+protected function nombreFinal(): Attribute
+{
+    return Attribute::make(
+        get: fn () => $this->nombre_personalizado ?: $this->servicio?->nombre
+    );
+}
+
+
     
 }

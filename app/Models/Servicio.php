@@ -25,6 +25,7 @@ class Servicio extends Model
         'tipo',
         'precio_base',
         'activo',
+         'es_editable',
         'es_tarifa_principal', // Este campo es opcional, solo si lo necesitas
         'requiere_proyecto_activacion', // <<< AÑADIDO
         'ciclo_facturacion',
@@ -42,6 +43,7 @@ class Servicio extends Model
         'tipo' => ServicioTipoEnum::class,
         // Castear 'activo' a booleano
         'activo' => 'boolean',
+          'es_editable' => 'boolean',
         // Castear 'precio_base' a decimal con 2 decimales (opcional pero bueno para consistencia)
         'precio_base' => 'decimal:2',
        'requiere_proyecto_activacion' => 'boolean', // <<< AÑADIDO

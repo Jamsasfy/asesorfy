@@ -11,12 +11,5 @@ class CreateFactura extends CreateRecord
 {
     protected static string $resource = FacturaResource::class;
 
-    protected function getFormActions(): array
-    {
-        return [
-            Action::make('submit')
-                ->label('Guardar')
-                ->visible(fn (Get $get) => $get('mostrar_guardar') === true),
-        ];
-    }
+   
 }

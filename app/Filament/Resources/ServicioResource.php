@@ -115,7 +115,7 @@ class ServicioResource extends Resource
     
                     ]),
 
-                    Grid::make(3)->schema([
+                    Grid::make(4)->schema([
                         Toggle::make('activo')
                             ->required()
                             ->default(true)
@@ -130,6 +130,11 @@ class ServicioResource extends Resource
                         Toggle::make('requiere_proyecto_activacion')
                             ->label('Requiere Proyecto de Activación')
                             ->helperText('Ej. alta de autónomo, capitalización, etc.'),
+
+                        Toggle::make('es_editable')
+                            ->label('¿Servicio editable por comercial?')
+                            ->helperText('Permite modificar nombre, precio y requisitos en la venta.')
+                            ->default(false),    
                     ]),
 
                   
@@ -191,7 +196,10 @@ class ServicioResource extends Resource
                 ->label('Proyecto asiociado')
                     ->boolean()
                     ->sortable(), 
-
+            IconColumn::make('es_editable') // Columna de icono para booleano
+                ->label('Es editable')
+                    ->boolean()
+                    ->sortable(), 
                 // Opcional: ToggleColumn para cambiar activo/inactivo desde la tabla
                 // ToggleColumn::make('activo'),
                 TextColumn::make('created_at')
@@ -250,6 +258,11 @@ class ServicioResource extends Resource
                 ->label('Solo los que Requieren Proyecto')
                 ->query(fn (Builder $query): Builder => $query->where('requiere_proyecto_activacion', true))
                 ->toggle(),
+            Filter::make('es_editable')
+                ->label('Son editables')
+                ->query(fn (Builder $query): Builder => $query->where('es_editable', true))
+                ->toggle(),
+    
 
         ], layout: \Filament\Tables\Enums\FiltersLayout::AboveContent)
             ->filtersFormColumns(7)

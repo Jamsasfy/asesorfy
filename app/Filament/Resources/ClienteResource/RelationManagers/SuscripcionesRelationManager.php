@@ -27,40 +27,34 @@ class SuscripcionesRelationManager extends RelationManager
             ->recordTitleAttribute('servicio.nombre')
             ->columns([
                 // Columna del Servicio (con enlace condicional a su Proyecto)
-                Tables\Columns\TextColumn::make('servicio.nombre')
+              Tables\Columns\TextColumn::make('nombre_final') // <-- CAMBIO AQUÍ
                     ->label('Servicio')
                     ->icon(function (ClienteSuscripcion $record): ?string {
-                        // Muestra un icono si esta suscripción tiene un proyecto asociado en su venta
+                        // Tu lógica para el icono se queda igual
                         return $record->ventaOrigen?->proyectos()
                             ->where('servicio_id', $record->servicio_id)
                             ->exists() ? 'heroicon-s-briefcase' : null;
                     })
                     ->url(function (ClienteSuscripcion $record): ?string {
-                        // Si existe un proyecto, genera una URL a su vista
+                        // Tu lógica para la URL se queda igual
                         $proyecto = $record->ventaOrigen?->proyectos()
                             ->where('servicio_id', $record->servicio_id)
                             ->first();
-                        return $proyecto ? ProyectoResource::getUrl('view', ['record' => $proyecto]) : null;
-                    }, true) // true para abrir en nueva pestaña
-                      ->color(function (ClienteSuscripcion $record): string {
-                            // Comprueba si existe un proyecto asociado
-                            $tieneProyecto = $record->ventaOrigen?->proyectos()
-                                ->where('servicio_id', $record->servicio_id)
-                                ->exists();
-
-                            if ($tieneProyecto) {
-                                return 'primary'; // Azul para proyectos
-                            }
-                            
-                            // Si no tiene proyecto y es recurrente, color amarillo
-                            if ($record->servicio->tipo === ServicioTipoEnum::RECURRENTE) {
-                                return 'warning';
-                            }
-
-                            // Color por defecto para el resto (ej. servicios únicos sin proyecto)
-                            return 'gray';
-                        }),
-
+                        return $proyecto ? \App\Filament\Resources\ProyectoResource::getUrl('view', ['record' => $proyecto]) : null;
+                    }, true)
+                    ->color(function (ClienteSuscripcion $record): string {
+                        // Tu lógica para el color se queda igual
+                        $tieneProyecto = $record->ventaOrigen?->proyectos()
+                            ->where('servicio_id', $record->servicio_id)
+                            ->exists();
+                        if ($tieneProyecto) {
+                            return 'primary';
+                        }
+                        if ($record->servicio->tipo === \App\Enums\ServicioTipoEnum::RECURRENTE) {
+                            return 'warning';
+                        }
+                        return 'gray';
+                    }),
                 // ▼▼▼ LA COLUMNA CORREGIDA ▼▼▼
 Tables\Columns\TextColumn::make('contexto_servicio')
     ->label('Estado del proyecto')

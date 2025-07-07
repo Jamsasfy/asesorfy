@@ -221,77 +221,83 @@ protected function importeTotalConIva(): Attribute
 public function processSaleAfterCreation(): void
 {
     // Precargamos relaciones para que las consultas sean más eficientes
-    $this->loadMissing('items.servicio.departamento.coordinador', 'cliente');
+    $this->loadMissing('items.servicio', 'cliente');
 
-    $ventaRequiereProyecto = $this->items->contains(fn ($item) =>
-        $item->servicio?->requiere_proyecto_activacion
-    );
+    // 1. Decidimos si la VENTA COMPLETA requiere un proyecto.
+    // Esto es para saber si las suscripciones recurrentes deben empezar en 'pendiente'.
+    $ventaRequiereProyecto = $this->items->contains(function ($item) {
+        if (!$item->servicio) return false;
 
+        // Si el servicio es editable, la decisión la toma el campo del item.
+        // Si no, la decisión la toma el campo del servicio.
+        return $item->servicio->es_editable
+            ? $item->requiere_proyecto
+            : $item->servicio->requiere_proyecto_activacion;
+    });
+
+    // 2. Recorremos cada item para crear proyectos y suscripciones
     foreach ($this->items as $item) {
         $servicio = $item->servicio;
         if (!$servicio) continue;
 
-        // --- Lógica de Proyectos y Notificación Dirigida ---
-        if ($servicio->requiere_proyecto_activacion) {
-            
-            $proyecto = Proyecto::create([
-                'nombre'          => "{$servicio->nombre} ({$this->cliente->razon_social})",
+        // --- Lógica para decidir si ESTE ITEM necesita un proyecto ---
+        $debeCrearProyecto = $servicio->es_editable
+            ? $item->requiere_proyecto
+            : $servicio->requiere_proyecto_activacion;
+
+        if ($debeCrearProyecto) {
+            // Usamos el nombre personalizado si existe, si no, el del servicio.
+            $nombreDelProyecto = $item->nombre_personalizado ?: $servicio->nombre;
+
+            $proyecto = \App\Models\Proyecto::create([
+                'nombre'          => "{$nombreDelProyecto} ({$this->cliente->razon_social})",
                 'cliente_id'      => $this->cliente_id,
                 'venta_id'        => $this->id,
                 'venta_item_id'   => $item->id,
                 'servicio_id'     => $servicio->id,
-                'estado'          => ProyectoEstadoEnum::Pendiente,
-                'descripcion'     => "Proyecto generado por la venta #{$this->id} para el servicio '{$servicio->nombre}'.",
+                'estado'          => \App\Enums\ProyectoEstadoEnum::Pendiente,
+                'descripcion'     => "Proyecto generado por la venta #{$this->id}.",
             ]);
 
-            // ▼▼▼ LÓGICA DE NOTIFICACIÓN CORREGIDA ▼▼▼
-
-            // 1. Obtenemos al coordinador del departamento del servicio
-            $coordinadorDelDepto = $servicio->departamento?->coordinador;
-
-            // 2. Si existe, le enviamos la notificación solo a él
-            if ($coordinadorDelDepto) {
-                Notification::make()
+            // Lógica de notificación al coordinador...
+            $coordinadores = \App\Models\User::whereHas('roles', fn ($q) => $q->where('name', 'coordinador'))->get();
+            if ($coordinadores->isNotEmpty()) {
+                \Filament\Notifications\Notification::make()
                     ->title('Nuevo Proyecto Pendiente')
-                    ->body("El proyecto '{$proyecto->nombre}' de tu departamento necesita un responsable.")
-                    ->icon('heroicon-o-clipboard-document-list')
-                    ->actions([
-                        Action::make('view')
-                            ->label('Ver Proyecto')
-                            ->url(ProyectoResource::getUrl('view', ['record' => $proyecto]))
-                            ->markAsRead()->close(),
-                    ])
-                    ->sendToDatabase($coordinadorDelDepto);
+                    ->body("El proyecto '{$proyecto->nombre}' necesita un responsable.")
+                    ->actions([\Filament\Notifications\Actions\Action::make('view')->label('Ver Proyecto')->url(\App\Filament\Resources\ProyectoResource::getUrl('view', ['record' => $proyecto]))])
+                    ->sendToDatabase($coordinadores);
             }
         }
 
-        // --- Lógica de Creación de Suscripciones (sin cambios) ---
+        // --- Lógica de Creación de Suscripciones ---
         $estadoInicial = null;
         $fechaInicio = null;
         $fechaFin = null;
 
-        if ($servicio->tipo === ServicioTipoEnum::UNICO) {
-            $estadoInicial = ClienteSuscripcionEstadoEnum::ACTIVA;
+        if ($servicio->tipo === \App\Enums\ServicioTipoEnum::UNICO) {
+            $estadoInicial = \App\Enums\ClienteSuscripcionEstadoEnum::ACTIVA;
             $fechaInicio = now();
             $fechaFin = now();
-        } elseif ($servicio->tipo === ServicioTipoEnum::RECURRENTE) {
-            $estadoInicial = $ventaRequiereProyecto ? ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION : ClienteSuscripcionEstadoEnum::ACTIVA;
+        } elseif ($servicio->tipo === \App\Enums\ServicioTipoEnum::RECURRENTE) {
+            $estadoInicial = $ventaRequiereProyecto ? \App\Enums\ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION : \App\Enums\ClienteSuscripcionEstadoEnum::ACTIVA;
             $fechaInicio = $ventaRequiereProyecto ? null : ($item->fecha_inicio_servicio ?? now());
             $fechaFin = null;
         }
 
         if ($estadoInicial) {
-            ClienteSuscripcion::create([
+            \App\Models\ClienteSuscripcion::create([
                 'cliente_id'             => $this->cliente_id,
                 'servicio_id'            => $item->servicio_id,
                 'venta_origen_id'        => $this->id,
+                'nombre_personalizado'   => $item->nombre_personalizado,
                 'es_tarifa_principal'    => $servicio->es_tarifa_principal,
                 'precio_acordado'        => $item->subtotal_aplicado,
                 'cantidad'               => $item->cantidad,
                 'fecha_inicio'           => $fechaInicio,
                 'fecha_fin'              => $fechaFin,
                 'estado'                 => $estadoInicial,
-                'ciclo_facturacion'      => $servicio->ciclo_facturacion, // Asegúrate de que este campo exista y se rellene
+                'ciclo_facturacion'      => $servicio->ciclo_facturacion,
                 'descuento_tipo'         => $item->descuento_tipo,
                 'descuento_valor'        => $item->descuento_valor,
                 'descuento_descripcion'  => $item->observaciones_descuento,
@@ -301,7 +307,6 @@ public function processSaleAfterCreation(): void
         }
     }
 }
-
   
 
 }

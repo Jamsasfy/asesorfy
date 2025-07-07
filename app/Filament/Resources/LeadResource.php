@@ -1064,7 +1064,7 @@ protected static function registrarInteraccion(Lead $record, string $campoContad
         ->paginated([25, 50, 100, 'all']) // Ajusta opciones si quieres
         ->striped()
         ->recordUrl(null)    // Esto quita la navegación al hacer clic en la fila
-
+        ->poll(60) // Actualizar cada 60 segundos
         ->defaultSort('created_at', 'desc') // Ordenar por defecto
         ->columns([
             // Columna Total Interacciones (Adaptada)

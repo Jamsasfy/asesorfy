@@ -7,6 +7,7 @@ use App\Enums\ClienteSuscripcionEstadoEnum; // <-- Importamos nuestro Enum
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Casts\Attribute; 
 
 class ClienteSuscripcion extends Model
 {
@@ -39,6 +40,7 @@ class ClienteSuscripcion extends Model
         'ciclo_facturacion',
         'proxima_fecha_facturacion',
         'datos_adicionales',
+         'nombre_personalizado',
     ];
 
     /**
@@ -86,4 +88,16 @@ class ClienteSuscripcion extends Model
     {
         return $this->belongsTo(Venta::class, 'venta_origen_id');
     }
+
+    /**
+     * Devuelve el nombre final del servicio, usando el personalizado si existe.
+     */
+    protected function nombreFinal(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => $this->nombre_personalizado ?: $this->servicio?->nombre
+        );
+    }
+
+
 }

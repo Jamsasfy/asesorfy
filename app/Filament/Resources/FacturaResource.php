@@ -21,6 +21,8 @@ use App\Services\ConfiguracionService;
 use BezhanSalleh\FilamentShield\Contracts\HasShieldPermissions;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Action;
+use Filament\Forms\Components\Actions;
+
 
 
 class FacturaResource extends Resource implements HasShieldPermissions
@@ -40,6 +42,8 @@ class FacturaResource extends Resource implements HasShieldPermissions
             'delete_any',
         ];
     }
+
+
 
 public static function form(Form $form): Form
 {
@@ -78,17 +82,22 @@ public static function form(Form $form): Form
             Section::make('Líneas de la Factura')->schema([
                 Repeater::make('items')
                     ->relationship()
-                    ->default([])
+                    ->live()
+                    ->default([
+                        ['cantidad' => 1, 'precio_unitario' => 0, 'porcentaje_iva' => 21],
+                    ])
                     ->columns(12)
                     ->afterStateHydrated(fn (Get $get, Set $set) => self::recalcularTotales($get, $set))
-                    ->addAction(fn ($action) =>
-                        $action->after(fn (Get $get, Set $set) => self::recalcularTotales($get, $set))
-                    )
-                    ->deleteAction(fn ($action) =>
-                        $action->after(fn (Get $get, Set $set) => self::recalcularTotales($get, $set))
-                    )
-                    ->reorderable(false)
-                    ->addActionLabel('Añadir Línea')
+                     ->addAction(fn ($action) =>
+                            $action
+                                ->label('Añadir Línea o actualizar totales')
+                                ->after(fn (Get $get, Set $set) => self::recalcularTotales($get, $set))
+                        )
+                            ->helperText('Añade todas las líneas de la factura antes de guardar. Si metes solo un item o servicio, debes pulsar en "Añadir Linea o actualizar totales" para que se actualice la factura en base de datos correctamente.')
+
+                        ->deleteAction(fn ($action) =>
+                            $action->after(fn (Get $get, Set $set) => self::recalcularTotales($get, $set))
+                        )
                     ->schema([
                         Select::make('servicio_id')
                             ->label('Servicio')
@@ -143,43 +152,61 @@ public static function form(Form $form): Form
 
             Section::make('Totales')->columns(3)->schema([
                 TextInput::make('base_imponible')
-                    ->numeric()
                     ->readOnly()
+                    ->numeric()
                     ->prefix('€')
                     ->default(0),
 
                 TextInput::make('total_iva')
                     ->label('Total IVA')
-                    ->numeric()
                     ->readOnly()
+                    ->numeric()
                     ->prefix('€')
                     ->default(0),
 
                 TextInput::make('total_factura')
                     ->label('TOTAL')
-                    ->numeric()
                     ->readOnly()
+                    ->numeric()
                     ->prefix('€')
                     ->default(0),
             ]),
-
-            // Campo de control para mostrar botón Guardar
-            Hidden::make('mostrar_guardar')->default(false),
-
-            // Botón "Recalcular Totales"
-            Actions::make([
-                Action::make('recalcular_totales')
-                    ->label('🔁 Recalcular Totales')
-                    ->icon('heroicon-o-calculator')
-                    ->color('primary')
-                    ->button()
-                    ->action(function (Get $get, Set $set) {
-                        self::recalcularTotales($get, $set);
-                        $set('mostrar_guardar', true);
-                    }),
-            ]),
+             Hidden::make('mostrar_guardar')->default(false),
         ]);
 }
+
+
+
+public static function mutateFormDataBeforeCreate(array $data): array
+{
+    $totales = self::calcularTotalesDesdeItems($data['items'] ?? []);
+    return array_merge($data, $totales);
+}
+
+protected static function calcularTotalesDesdeItems(array $items): array
+{
+    $baseImponibleTotal = 0;
+    $ivaTotalAcumulado = 0;
+
+    foreach ($items as $item) {
+        $cantidad = (float)($item['cantidad'] ?? 0);
+        $precioUnitario = (float)($item['precio_unitario'] ?? 0);
+        $porcentajeIva = (float)($item['porcentaje_iva'] ?? 0);
+
+        $subtotalItem = $cantidad * $precioUnitario;
+        $ivaDelItem = $subtotalItem * ($porcentajeIva / 100);
+
+        $baseImponibleTotal += $subtotalItem;
+        $ivaTotalAcumulado += $ivaDelItem;
+    }
+
+    return [
+        'base_imponible' => round($baseImponibleTotal, 2),
+        'total_iva' => round($ivaTotalAcumulado, 2),
+        'total_factura' => round($baseImponibleTotal + $ivaTotalAcumulado, 2),
+    ];
+}
+
 
 
 

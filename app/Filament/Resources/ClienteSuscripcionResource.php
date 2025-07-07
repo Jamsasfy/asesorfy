@@ -5,10 +5,8 @@ namespace App\Filament\Resources;
 use App\Enums\ClienteSuscripcionEstadoEnum;
 use App\Enums\ServicioTipoEnum;
 use App\Filament\Resources\ClienteSuscripcionResource\Pages;
-use App\Filament\Resources\ClienteSuscripcionResource\RelationManagers;
 use App\Models\ClienteSuscripcion;
 use BezhanSalleh\FilamentShield\Contracts\HasShieldPermissions;
-use Filament\Forms;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Select;
@@ -23,7 +21,7 @@ use Filament\Infolists\Infolist;
 use Filament\Infolists\Components\Section as InfoSection;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Components\Grid as InfolistGrid;
-
+use Filament\Tables\Columns\ViewColumn;
 
 class ClienteSuscripcionResource extends Resource implements HasShieldPermissions
 {
@@ -91,7 +89,14 @@ class ClienteSuscripcionResource extends Resource implements HasShieldPermission
          ->defaultSort('created_at', 'desc') // Ordenar por defecto
         ->columns([
             Tables\Columns\TextColumn::make('cliente.razon_social')->searchable(),
-            Tables\Columns\TextColumn::make('servicio.nombre')->searchable(),
+             Tables\Columns\TextColumn::make('nombre_final') // Usamos el accesor del modelo
+        ->label('Servicio Contratado')
+        ->searchable(query: function (Builder $query, string $search): Builder {
+            // Hacemos que la búsqueda funcione en ambos campos
+            return $query
+                ->where('nombre_personalizado', 'like', "%{$search}%")
+                ->orWhereHas('servicio', fn ($q) => $q->where('nombre', 'like', "%{$search}%"));
+        }),
             Tables\Columns\TextColumn::make('estado')->badge()
              ->color(fn (ClienteSuscripcionEstadoEnum $state): string => match ($state) {
         ClienteSuscripcionEstadoEnum::ACTIVA => 'success',
@@ -103,6 +108,30 @@ class ClienteSuscripcionResource extends Resource implements HasShieldPermission
             Tables\Columns\TextColumn::make('fecha_inicio')->date('d/m/Y'),
             Tables\Columns\TextColumn::make('fecha_fin')->date('d/m/Y'),
             Tables\Columns\TextColumn::make('precio_acordado')->money('EUR'),
+    // ▼▼▼ REEMPLAZA LA COLUMNA DEL DESCUENTO POR ESTA ▼▼▼
+ViewColumn::make('descuento')
+    ->label('Dto.')
+    ->view('filament.tables.columns.discount-icon-tooltip') // <-- Carga nuestro archivo Blade
+    ->tooltip(function ($record): ?string {
+        if (!$record->descuento_tipo) {
+            return null;
+        }
+        
+        $parts = [];
+        $parts[] = 'Tipo: ' . $record->descuento_tipo;
+        $valor = number_format($record->descuento_valor, 2, ',', '.');
+        $parts[] = 'Valor: ' . ($record->descuento_tipo === 'porcentaje' ? "{$valor}%" : "{$valor} €");
+        
+        if ($record->descuento_valido_hasta) {
+            $parts[] = 'Válido hasta: ' . $record->descuento_valido_hasta->format('d/m/Y');
+        }
+        if ($record->descuento_descripcion) {
+            $parts[] = 'Descripción: ' . $record->descuento_descripcion;
+        }
+        
+        return implode("\n", $parts);
+    }),
+
             Tables\Columns\TextColumn::make('ciclo_facturacion'),
             Tables\Columns\TextColumn::make('created_at')
                 ->dateTime('d/m/Y H:i')
@@ -226,11 +255,11 @@ class ClienteSuscripcionResource extends Resource implements HasShieldPermission
                     ->columnSpan(2)
                     ->columns(2)
                     ->schema([
-                        TextEntry::make('servicio.nombre')
-                            ->label('Servicio Contratado')
-                            ->weight('bold')
-                            ->size('lg')
-                            ->columnSpanFull(),
+                      TextEntry::make('nombre_final') // <-- Usamos el accesor aquí
+                        ->label('Servicio Contratado')
+                        ->weight('bold')
+                        ->size('lg')
+                        ->columnSpanFull(),
 
                         TextEntry::make('estado')
                             ->label('Estado Actual')
@@ -257,6 +286,41 @@ class ClienteSuscripcionResource extends Resource implements HasShieldPermission
                                 }
                                 return null;
                             }),
+
+                            TextEntry::make('info_descuento') // Nombre virtual
+        ->label('Descuento Aplicado')
+        ->icon(fn (ClienteSuscripcion $record): ?string =>
+            $record->descuento_tipo ? 'heroicon-o-exclamation-circle' : 'heroicon-o-check-circle'
+        )
+        ->color(fn (ClienteSuscripcion $record): string =>
+            $record->descuento_tipo ? 'warning' : 'success'
+        )
+        ->state(fn (ClienteSuscripcion $record): string =>
+            $record->descuento_tipo ? 'Sí' : 'No'
+        )
+        ->tooltip(function (ClienteSuscripcion $record): ?string {
+            if (!$record->descuento_tipo) {
+                return null;
+            }
+            
+            $parts = [];
+            $parts[] = 'Tipo: ' . $record->descuento_tipo;
+
+            $valor = number_format($record->descuento_valor, 2, ',', '.');
+            $parts[] = 'Valor: ' . ($record->descuento_tipo === 'porcentaje' ? "{$valor}%" : "{$valor} €");
+            
+            if ($record->descuento_valido_hasta) {
+                $parts[] = 'Válido hasta: ' . $record->descuento_valido_hasta->format('d/m/Y');
+            }
+            if ($record->descuento_descripcion) {
+                $parts[] = 'Descripción: ' . $record->descuento_descripcion;
+            }
+            
+            return implode("\n", $parts);
+        }),
+           
+
+
 
                         TextEntry::make('ciclo_facturacion')
                             ->label('Periodicidad')
