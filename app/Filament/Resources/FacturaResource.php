@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\FacturaEstadoEnum;
 use App\Filament\Resources\FacturaResource\Pages;
 use App\Models\Factura;
 use App\Models\Servicio;
@@ -58,18 +59,14 @@ public static function form(Form $form): Form
                     ->columnSpan(2),
 
                 TextInput::make('numero_factura')
-                    ->required()
-                    ->maxLength(255),
+                    ->label('Número de Factura')
+                    ->readOnly() // Lo hacemos de solo lectura para evitar errores
+                    ->placeholder('Se generará al guardar'),
 
-                Select::make('estado')
-                    ->options([
-                        'borrador' => 'Borrador',
-                        'pendiente_pago' => 'Pendiente de Pago',
-                        'pagada' => 'Pagada',
-                        'anulada' => 'Anulada',
-                    ])
-                    ->required()
-                    ->default('borrador'),
+                 Select::make('estado')
+                        ->options(FacturaEstadoEnum::class) // <-- ¡Directamente el Enum!
+                        ->required()
+                        ->default(FacturaEstadoEnum::PENDIENTE_PAGO),
 
                 DatePicker::make('fecha_emision')
                     ->required()
@@ -143,7 +140,7 @@ public static function form(Form $form): Form
                             ->label('% IVA')
                             ->numeric()
                             ->required()
-                            ->default(fn () => ConfiguracionService::get('IVA_general', 0.21) * 100)
+                           ->default(fn () => ConfiguracionService::get('IVA_general', 21.00)) 
                             ->columnSpan(4)
                             ->reactive()
                             ->afterStateUpdated(fn (Get $get, Set $set) => self::recalcularTotales($get, $set)),
@@ -177,11 +174,7 @@ public static function form(Form $form): Form
 
 
 
-public static function mutateFormDataBeforeCreate(array $data): array
-{
-    $totales = self::calcularTotalesDesdeItems($data['items'] ?? []);
-    return array_merge($data, $totales);
-}
+
 
 protected static function calcularTotalesDesdeItems(array $items): array
 {
@@ -247,14 +240,8 @@ public static function recalcularTotales(Get $get, Set $set): void
             TextColumn::make('cliente.razon_social')->searchable()->sortable(),
             TextColumn::make('fecha_emision')->date('d/m/Y')->sortable(),
             TextColumn::make('total_factura')->money('EUR')->sortable(),
-            TextColumn::make('estado')->badge()
-                ->color(fn (string $state): string => match ($state) {
-                    'borrador' => 'gray',
-                    'pendiente_pago' => 'warning',
-                    'pagada' => 'success',
-                    'anulada' => 'danger',
-                    default => 'gray',
-                }),
+            TextColumn::make('estado')
+                ->badge(),
         ])
         ->filters([
             //

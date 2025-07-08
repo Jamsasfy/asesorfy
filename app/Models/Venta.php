@@ -224,7 +224,6 @@ public function processSaleAfterCreation(): void
     $this->loadMissing('items.servicio', 'cliente');
 
     // 1. Decidimos si la VENTA COMPLETA requiere un proyecto.
-    // Esto es para saber si las suscripciones recurrentes deben empezar en 'pendiente'.
     $ventaRequiereProyecto = $this->items->contains(function ($item) {
         if (!$item->servicio) return false;
 
@@ -300,6 +299,7 @@ public function processSaleAfterCreation(): void
                 'ciclo_facturacion'      => $servicio->ciclo_facturacion,
                 'descuento_tipo'         => $item->descuento_tipo,
                 'descuento_valor'        => $item->descuento_valor,
+                'descuento_duracion_meses' => $item->descuento_duracion_meses, // <-- LÍNEA AÑADIDA
                 'descuento_descripcion'  => $item->observaciones_descuento,
                 'descuento_valido_hasta' => $item->descuento_valido_hasta,
                 'observaciones'          => $item->observaciones_item,

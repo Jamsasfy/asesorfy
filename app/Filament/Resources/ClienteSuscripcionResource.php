@@ -112,27 +112,53 @@ class ClienteSuscripcionResource extends Resource implements HasShieldPermission
 ViewColumn::make('descuento')
     ->label('Dto.')
     ->view('filament.tables.columns.discount-icon-tooltip') // <-- Carga nuestro archivo Blade
-    ->tooltip(function ($record): ?string {
-        if (!$record->descuento_tipo) {
-            return null;
-        }
+   ->tooltip(function ($record): ?string {
+    if (!$record->descuento_tipo) {
+        return null;
+    }
+    
+    $descuentoVigente = $record->descuento_valido_hasta && now()->lte($record->descuento_valido_hasta);
+    $prefix = $descuentoVigente ? '[EN CURSO]' : '[APLICADO FINALIZADO]';
+    
+    $parts = [$prefix];
+
+    // ▼▼▼ LÓGICA DE TIEMPO RESTANTE ACTUALIZADA ▼▼▼
+    if ($descuentoVigente) {
+        // Obtenemos la diferencia de meses. Usamos ceil() para redondear hacia arriba.
+        // Ej: si quedan 1.2 meses, lo contará como 2.
+        $mesesRestantes = ceil(now()->floatDiffInMonths($record->descuento_valido_hasta));
         
-        $parts = [];
-        $parts[] = 'Tipo: ' . $record->descuento_tipo;
-        $valor = number_format($record->descuento_valor, 2, ',', '.');
-        $parts[] = 'Valor: ' . ($record->descuento_tipo === 'porcentaje' ? "{$valor}%" : "{$valor} €");
+        // Lo convertimos a entero para asegurar
+        $mesesRestantesEntero = (int) $mesesRestantes;
         
-        if ($record->descuento_valido_hasta) {
-            $parts[] = 'Válido hasta: ' . $record->descuento_valido_hasta->format('d/m/Y');
+        if ($mesesRestantesEntero > 1) {
+            $parts[] = "Quedan: {$mesesRestantesEntero} meses";
+        } elseif ($mesesRestantesEntero === 1) {
+            $parts[] = "Queda: Este es el último mes";
         }
-        if ($record->descuento_descripcion) {
-            $parts[] = 'Descripción: ' . $record->descuento_descripcion;
-        }
-        
-        return implode("\n", $parts);
-    }),
+    }
+    
+    $parts[] = '---';
+    $parts[] = 'Tipo: ' . $record->descuento_tipo;
+    $valor = number_format($record->descuento_valor, 2, ',', '.');
+    $parts[] = 'Valor: ' . ($record->descuento_tipo === 'porcentaje' ? "{$valor}%" : "{$valor} €");
+    
+    if ($record->descuento_duracion_meses) {
+        $parts[] = 'Duración Total: ' . $record->descuento_duracion_meses . ' meses';
+    }
+    
+    if ($record->descuento_valido_hasta) {
+        $parts[] = 'Finaliza el: ' . $record->descuento_valido_hasta->format('d/m/Y');
+    }
+    if ($record->descuento_descripcion) {
+        $parts[] = 'Descripción: ' . $record->descuento_descripcion;
+    }
+    
+    return implode("\n", $parts);
+}),
 
             Tables\Columns\TextColumn::make('ciclo_facturacion'),
+             Tables\Columns\TextColumn::make('proxima_fecha_facturacion')->date('d/m/Y'),
             Tables\Columns\TextColumn::make('created_at')
                 ->dateTime('d/m/Y H:i')
                 ->label('Creado'),

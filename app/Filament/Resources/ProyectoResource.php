@@ -408,17 +408,14 @@ public static function getNavigationLabel(): string
             ->filtersFormColumns(8)
          
             ->actions([
-                Tables\Actions\EditAction::make()
-                ->label('')
-                ->tooltip('Editar Proyecto')
-                ->openUrlInNewTab(),
                 Tables\Actions\ViewAction::make()
                 ->label('')
                 ->tooltip('Ver Proyecto')
                  ->openUrlInNewTab(),
-
-
-
+                Tables\Actions\EditAction::make()
+                ->label('')
+                ->tooltip('Editar Proyecto')
+                ->openUrlInNewTab(),  
                   // <<< AÑADIDO: Acción para Asignar Asesor
                Action::make('assign_assessor')
                     ->label('')

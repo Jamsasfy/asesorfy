@@ -11,13 +11,14 @@ class FacturaItem extends Model
     use HasFactory;
 
     protected $fillable = [
-        'factura_id', 'servicio_id', 'descripcion', 'cantidad',
-        'precio_unitario', 'porcentaje_iva', 'subtotal',
+        'factura_id', 'servicio_id', 'descripcion', 'cantidad', 'cliente_suscripcion_id', 'precio_unitario_aplicado', 
+        'precio_unitario', 'porcentaje_iva', 'subtotal', 'importe_descuento', 
     ];
 
     protected $casts = [
         'cantidad' => 'decimal:2',
         'precio_unitario' => 'decimal:2',
+        'precio_unitario_aplicado' => 'decimal:2', 
         'porcentaje_iva' => 'decimal:2',
         'subtotal' => 'decimal:2',
     ];
@@ -26,5 +27,9 @@ class FacturaItem extends Model
     public function factura(): BelongsTo
     {
         return $this->belongsTo(Factura::class);
+    }
+     public function clienteSuscripcion(): BelongsTo
+    {
+        return $this->belongsTo(ClienteSuscripcion::class, 'cliente_suscripcion_id');
     }
 }

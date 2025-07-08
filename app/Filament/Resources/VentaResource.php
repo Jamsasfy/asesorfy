@@ -475,39 +475,43 @@ public static function form(Form $form): Form
 
 
     private static function updateTotals(Get $get, Set $set): void
-    {
-        $cantidad = (float)($get('cantidad') ?? 1);
-        $precioUnitario = (float)($get('precio_unitario') ?? 0);
-        $subtotal = round($cantidad * $precioUnitario, 2);
-        $set('subtotal', $subtotal);
+{
+    $cantidad = (float)($get('cantidad') ?? 1);
+    $precioUnitario = (float)($get('precio_unitario') ?? 0);
+    $subtotal = round($cantidad * $precioUnitario, 2);
+    $set('subtotal', $subtotal);
 
-        $ivaPorcentaje = ConfiguracionService::get('IVA_general', 0.21);
-        $subtotalConIva = round($subtotal * (1 + $ivaPorcentaje), 2);
-        $set('subtotal_con_iva', $subtotalConIva);
+    // CAMBIO CLAVE AQUÍ: Recuperamos el IVA como 21 (entero)
+    $ivaPorcentaje = ConfiguracionService::get('IVA_general', 21.00); // Esto devolverá 21
 
-        $descuentoTipo = $get('descuento_tipo');
-        $descuentoValor = (float)($get('descuento_valor') ?? 0);
-        $precioFinalConDto = $subtotal;
+    // Calculamos el IVA usando el 21% correctamente (21 / 100 = 0.21)
+    $factorIva = (1 + ($ivaPorcentaje / 100)); // (1 + 21/100) = 1.21
+    $subtotalConIva = round($subtotal * $factorIva, 2);
+    $set('subtotal_con_iva', $subtotalConIva);
 
-        if (!empty($descuentoTipo) && is_numeric($descuentoValor) && $descuentoValor > 0) {
-            switch ($descuentoTipo) {
-                case 'porcentaje':
-                    $precioFinalConDto = round($subtotal - ($subtotal * ($descuentoValor / 100)), 2);
-                    break;
-                case 'fijo':
-                    $precioFinalConDto = round($subtotal - $descuentoValor, 2);
-                    break;
-                case 'precio_final':
-                    $precioFinalConDto = round($descuentoValor, 2);
-                    break;
-            }
+    $descuentoTipo = $get('descuento_tipo');
+    $descuentoValor = (float)($get('descuento_valor') ?? 0);
+    $precioFinalConDto = $subtotal;
+
+    if (!empty($descuentoTipo) && is_numeric($descuentoValor) && $descuentoValor > 0) {
+        switch ($descuentoTipo) {
+            case 'porcentaje':
+                $precioFinalConDto = round($subtotal - ($subtotal * ($descuentoValor / 100)), 2);
+                break;
+            case 'fijo':
+                $precioFinalConDto = round($subtotal - $descuentoValor, 2);
+                break;
+            case 'precio_final':
+                $precioFinalConDto = round($descuentoValor, 2);
+                break;
         }
-        $precioFinalConDto = max(0, $precioFinalConDto);
-
-        $set('subtotal_aplicado', $precioFinalConDto); 
-        $set('subtotal_aplicado_con_iva', round($precioFinalConDto * (1 + $ivaPorcentaje), 2));
     }
+    $precioFinalConDto = max(0, $precioFinalConDto);
 
+    $set('subtotal_aplicado', $precioFinalConDto); 
+    // Y aquí también aplicamos el factor IVA correctamente
+    $set('subtotal_aplicado_con_iva', round($precioFinalConDto * $factorIva, 2));
+}
 
     public static function table(Table $table): Table
     {

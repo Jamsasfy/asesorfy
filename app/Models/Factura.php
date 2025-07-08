@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\FacturaEstadoEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -25,6 +26,8 @@ class Factura extends Model
         'base_imponible' => 'decimal:2',
         'total_iva' => 'decimal:2',
         'total_factura' => 'decimal:2',
+                'estado' => FacturaEstadoEnum::class, // <-- ¡Cambiado a usar el Enum!
+
     ];
 
     // Una factura pertenece a un cliente
