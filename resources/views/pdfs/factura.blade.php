@@ -5,7 +5,7 @@
     <title>Factura {{ $factura->numero_factura }}</title>
     <style>
         body {
-            font-family: 'Helvetica', 'Arial', sans-serif;
+            font-family: 'Varela Round', 'Arial', sans-serif;
             font-size: 10pt;
             margin: 0;
             padding: 8mm; /* Márgenes reducidos */
@@ -33,12 +33,12 @@
         }
 
         .logo {
-            max-width: 150px;
+            max-width: 200px;
             height: auto;
             margin-bottom: 10px;
         }
         .empresa-info, .factura-info {
-            font-size: 9pt;
+            font-size: 10pt;
             line-height: 1.4;
         }
         .empresa-info strong, .factura-info strong {
@@ -108,11 +108,12 @@
         .notes, .bank-info {
             font-size: 9pt;
             color: #555;
-            margin-top: 20px;
+           
         }
         .bank-info {
             float: left;
             width: 55%;
+             margin-top: 40px;
         }
         .footer-fixed {
             width: 100%;
@@ -120,7 +121,7 @@
             bottom: 0;
             left: 0;
             right: 0;
-            padding: 10mm 8mm;
+            padding: 0mm 0mm;
             font-size: 8pt;
             color: #555;
             text-align: center;
@@ -132,7 +133,7 @@
         }
 
         .footer-image { /* Estilo para la nueva imagen del footer */
-            max-width: 100px; /* Ajusta el tamaño de la imagen según sea necesario */
+            max-width: 400px; /* Ajusta el tamaño de la imagen según sea necesario */
             height: auto;
             margin-top: 5mm; /* Espacio entre el texto del footer y la imagen */
             display: block; /* Para centrarla si text-align es center */
@@ -188,12 +189,13 @@
     </div>
 
     <div class="cliente-info">
+        <strong>DATOS DEL CLIENTE</strong><br>
         <strong>Razon Social:</strong> {{ $factura->cliente->razon_social ?? 'Cliente Desconocido' }}<br>
         @if ($factura->cliente->nombre && $factura->cliente->apellidos)
-            Nombre y Apellidos: {{ $factura->cliente->nombre }} {{ $factura->cliente->apellidos }}<br>
+             <strong>Nombre y Apellidos:</strong> {{ $factura->cliente->nombre }} {{ $factura->cliente->apellidos }}<br>
         @endif
         @if ($factura->cliente->dni_cif)
-            CIF: {{ $factura->cliente->dni_cif }}<br>
+            <strong>CIF:</strong> {{ $factura->cliente->dni_cif }}<br>
         @endif
         @if ($factura->cliente->direccion)
             {{ $factura->cliente->direccion }}<br>
@@ -235,10 +237,17 @@
 
     <div class="footer-sections">
         <div class="bank-info">
-            <strong>Datos Bancarios para Transferencia:</strong><br>
-            Banco: {{ $empresa['banco_nombre'] ?? '' }}<br>
-            IBAN: {{ $empresa['banco_iban'] ?? '' }}<br>
-            SWIFT/BIC: {{ $empresa['banco_swift'] ?? '' }}
+            @if ($factura->metodo_pago === 'transferencia')
+                <strong>Datos Bancarios para Transferencia:</strong><br>
+                Banco: {{ $empresa['banco_nombre'] ?? '' }}<br>
+                IBAN: {{ $empresa['banco_iban'] ?? '' }}<br>
+                SWIFT/BIC: {{ $empresa['banco_swift'] ?? '' }}
+            @elseif ($factura->estado === App\Enums\FacturaEstadoEnum::PAGADA)
+                <strong>Estado de Pago:</strong> Pago Recibido<br>
+                Método: {{ $factura->metodo_pago ?? 'N/A' }}
+            @else
+                <strong>Método de Pago:</strong> {{ $factura->metodo_pago ?? 'No especificado' }}
+            @endif
         </div>
 
         <div class="totals">
@@ -274,14 +283,18 @@
     </div>
     
     <div class="notes">
-        <p>Gracias por su confianza.</p>
+        <p>Este documento es confidencial y está protegido por la normativa vigente de protección de datos. El impago de esta factura, según los términos y condiciones aceptados, podrá suponer la suspensión o cancelación del servicio, así como la asunción de responsabilidades legales derivadas.
+
+El servicio podrá reactivarse únicamente tras la regularización del pago pendiente. AsesorFy se reserva el derecho a no prestar nuevos servicios hasta la resolución del impago.
+
+Para más información, consulta nuestras condiciones en www.asesorfy.net.</p>
         @if ($factura->observaciones_publicas)
             <p>Observaciones: {{ $factura->observaciones_publicas }}</p>
         @endif
     </div>
 
     <div class="footer-fixed">
-        <p>{{ $empresa['razon_social'] ?? 'Asesorfy' }} - CIF: {{ $empresa['cif'] ?? 'B12345678' }}</p>
+        <p>{{ $empresa['razon_social'] ?? 'Asesorfy' }} - CIF: {{ $empresa['cif'] ?? 'B12345678' }} - {{ $empresa['email'] ?? 'info@asesorfy.net' }} - {{ $empresa['telefono'] ?? '722873562' }} - {{ $empresa['web'] ?? 'https://www.asesorfy.net' }}</p>
         @if (!empty($empresa['footer_image_url']) && file_exists($empresa['footer_image_url']))
             <img src="{{ $empresa['footer_image_url'] }}" class="footer-image">
         @endif
