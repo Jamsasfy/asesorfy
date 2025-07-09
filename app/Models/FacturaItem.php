@@ -32,4 +32,9 @@ class FacturaItem extends Model
     {
         return $this->belongsTo(ClienteSuscripcion::class, 'cliente_suscripcion_id');
     }
+     // Un ítem de factura pertenece a un Servicio
+    public function servicio(): BelongsTo // <-- ¡Añadir esta función!
+    {
+        return $this->belongsTo(Servicio::class); // Asegúrate de que App\Models\Servicio existe
+    }
 }

@@ -77,7 +77,7 @@ class VariableConfiguracionResource extends Resource
                     ->label('Secreto'),
                 Tables\Columns\TextColumn::make('descripcion')
                     ->limit(50) // Limita la longitud en la tabla para no ocupar demasiado espacio
-                    ->tooltip(fn (VariableConfiguracion $record): string => $record->descripcion) // Muestra la descripción completa al pasar el ratón
+                    ->tooltip(fn (VariableConfiguracion $record): ?string => $record->descripcion ?? null) // <-- ¡Corregido!
                     ->label('Descripción'),
                 Tables\Columns\TextColumn::make('updated_at')
                     ->dateTime() // Formatea la fecha y hora

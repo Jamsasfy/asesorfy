@@ -59,20 +59,29 @@ class FacturacionMensualGenerar extends Command
                 $ivaTotal = 0;
 
                 foreach ($suscripcionesDelCliente as $suscripcion) {
-                    $cantidadSuscripcion = $suscripcion->cantidad; // La cantidad de la suscripción (ej. 11)
-                    // ** ¡NUEVO CÁLCULO CLAVE! **
-                    // Derivamos el precio unitario base real a partir del precio acordado TOTAL
-                    $precioUnitarioBaseReal = ($cantidadSuscripcion > 0) 
-                                                ? ($suscripcion->precio_acordado / $cantidadSuscripcion) 
+                    $precioUnitarioBaseReal = ($suscripcion->cantidad > 0) 
+                                                ? ($suscripcion->precio_acordado / $suscripcion->cantidad) 
                                                 : 0; 
+                    $cantidadSuscripcion = $suscripcion->cantidad;
                     
-                    $descripcion = $suscripcion->nombre_final . ' - Periodo ' . $hoy->format('m/Y');
+                    // ** CAMBIO AQUÍ: Lógica para la descripción **
+                    $descripcion = $suscripcion->nombre_final;
+                    if ($suscripcion->servicio->tipo === ServicioTipoEnum::RECURRENTE) {
+                        $descripcion .= ' - Periodo ' . $hoy->format('m/Y');
+                    } elseif ($suscripcion->servicio->tipo === ServicioTipoEnum::UNICO) {
+                        // Usamos la fecha de inicio de la suscripción única para su descripción
+                        $fechaInicioFormatted = $suscripcion->fecha_inicio ? $suscripcion->fecha_inicio->format('d/m/Y') : 'Fecha no especificada';
+                        $descripcion .= ' - ' . $fechaInicioFormatted;
+                    }
+                    // Añadimos la descripción del descuento si existe
                     if ($suscripcion->descuento_descripcion) {
                         $descripcion .= " ({$suscripcion->descuento_descripcion})";
                     }
+                    // ** FIN CAMBIO Lógica para la descripción **
 
-                    $precioUnitarioDespuesPorcentajeDto = $precioUnitarioBaseReal; // Usamos el precio unitario base REAL
-                    $importeDescuentoAplicadoALinea = 0; // Descuento monetario total aplicado a esta línea de la factura
+
+                    $precioUnitarioDespuesPorcentajeDto = $precioUnitarioBaseReal;
+                    $importeDescuentoAplicadoALinea = 0;
                     
                     $descuentoVigente = $suscripcion->descuento_tipo && $suscripcion->descuento_valido_hasta && $hoy->lte($suscripcion->descuento_valido_hasta);
 
@@ -84,41 +93,37 @@ class FacturacionMensualGenerar extends Command
                         } 
                     }
                     
-                    // Precio unitario base para cálculos posteriores
-                    $precioUnitarioCalculadoParaFacturaItem = $precioUnitarioDespuesPorcentajeDto; // Este es el que se ajustará con descuentos fijos/precio_final
-                    $subtotalLineaBaseCalculado = $precioUnitarioCalculadoParaFacturaItem * $cantidadSuscripcion; // Subtotal de la línea con descuentos porcentuales
+                    $precioUnitarioCalculadoParaFacturaItem = $precioUnitarioDespuesPorcentajeDto;
+                    $subtotalLineaBaseCalculado = $precioUnitarioCalculadoParaFacturaItem * $cantidadSuscripcion;
 
-                    // Lógica para aplicar descuentos FIJOS o de PRECIO_FINAL al subtotal de la línea
                     if ($descuentoVigente && in_array($suscripcion->descuento_tipo, ['fijo', 'precio_final'])) {
                         if ($suscripcion->descuento_tipo === 'fijo') {
-                            $descuentoTotalFijo = $suscripcion->descuento_valor; // Este valor ya es el total para la línea
+                            $descuentoTotalFijo = $suscripcion->descuento_valor;
                             $subtotalLineaCalculado = max(0, $subtotalLineaBaseCalculado - $descuentoTotalFijo);
-                            $importeDescuentoAplicadoALinea += $descuentoTotalFijo; // Sumar al descuento total de la línea
+                            $importeDescuentoAplicadoALinea += $descuentoTotalFijo;
                         } else { // 'precio_final'
-                            $precioFinalDeseado = $suscripcion->descuento_valor; // Este valor es el precio final TOTAL para la línea
+                            $precioFinalDeseado = $suscripcion->descuento_valor;
                             $descuentoTotalFijo = $subtotalLineaBaseCalculado - $precioFinalDeseado;
-                            $subtotalLineaCalculado = $precioFinalDeseado; // El precio final es el nuevo subtotal
-                            $importeDescuentoAplicadoALinea = max(0, $descuentoTotalFijo); // El descuento es la diferencia
+                            $subtotalLineaCalculado = $precioFinalDeseado;
+                            $importeDescuentoAplicadoALinea = max(0, $descuentoTotalFijo);
                         }
-                        // Recalcular el precio unitario aplicado después de descuento fijo/precio_final
                         $precioUnitarioCalculadoParaFacturaItem = ($cantidadSuscripcion > 0) ? ($subtotalLineaCalculado / $cantidadSuscripcion) : 0;
                     } else {
-                        // Si no hay descuento fijo/precio_final, el subtotal final de la línea es el subtotal base calculado
                         $subtotalLineaCalculado = $subtotalLineaBaseCalculado;
                     }
 
-                    // Calcular IVA sobre el subtotal final de la línea
                     $ivaItem = $subtotalLineaCalculado * ($ivaPorcentaje / 100);
 
                     $factura->items()->create([
                         'cliente_suscripcion_id' => $suscripcion->id,
+                        'servicio_id'        => $suscripcion->servicio_id, 
                         'descripcion'        => $descripcion,
-                        'cantidad'           => $cantidadSuscripcion, // <-- ¡Cantidad real de la suscripción!
-                        'precio_unitario'    => round($precioUnitarioBaseReal, 2),          // <-- Precio UNITARIO ORIGINAL REAL
-                        'precio_unitario_aplicado' => round($precioUnitarioCalculadoParaFacturaItem, 2), // <-- Precio UNITARIO FINAL con descuentos
-                        'importe_descuento'  => round($importeDescuentoAplicadoALinea, 2), // Descuento TOTAL aplicado a la línea
+                        'cantidad'           => $cantidadSuscripcion,
+                        'precio_unitario'    => round($precioUnitarioBaseReal, 2),
+                        'precio_unitario_aplicado' => round($precioUnitarioCalculadoParaFacturaItem, 2),
+                        'importe_descuento'  => round($importeDescuentoAplicadoALinea, 2),
                         'porcentaje_iva'     => $ivaPorcentaje,
-                        'subtotal'           => round($subtotalLineaCalculado, 2),       // Subtotal FINAL de la línea (cantidad * precio_unitario_aplicado)
+                        'subtotal'           => round($subtotalLineaCalculado, 2),
                     ]);
 
                     $baseTotal += $subtotalLineaCalculado;

@@ -23,7 +23,12 @@ use BezhanSalleh\FilamentShield\Contracts\HasShieldPermissions;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Action;
 use Filament\Forms\Components\Actions;
-
+use Filament\Notifications\Notification;
+use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Builder; 
+use Filament\Tables\Actions\Action as TablesAction;
+use Filament\Tables\Enums\FiltersLayout;
+use Filament\Tables\Filters\SelectFilter;
 
 
 class FacturaResource extends Resource implements HasShieldPermissions
@@ -96,25 +101,49 @@ public static function form(Form $form): Form
                             $action->after(fn (Get $get, Set $set) => self::recalcularTotales($get, $set))
                         )
                     ->schema([
-                        Select::make('servicio_id')
-                            ->label('Servicio')
-                            ->searchable()
-                            ->nullable()
-                            ->options(Servicio::all()->pluck('nombre', 'id'))
-                            ->reactive()
-                            ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
-                                if (!$state) return;
+                          Select::make('servicio_id')
+        ->label('Servicio')
+        ->relationship('servicio', 'nombre') 
+        ->searchable() 
+        ->preload()
+        ->nullable()
+        ->reactive()
+        ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
+            // Esta lógica es para edición/creación, no para la visualización pasiva.
+            if (!$state) {
+                $set('descripcion', null);
+                $set('precio_unitario', 0);
+                $set('porcentaje_iva', 21);
+                self::recalcularTotales($get, $set);
+                return;
+            }
+            $servicio = \App\Models\Servicio::find($state); // Asegúrate de importar \App\Models\Servicio
+            if ($servicio) {
+                $set('descripcion', $servicio->nombre);
+                $set('precio_unitario', $servicio->precio_base);
+                $set('porcentaje_iva', 21);
+            }
+            self::recalcularTotales($get, $set);
+        })
+        ->columnSpan(4),
 
-                                $servicio = Servicio::find($state);
-                                if ($servicio) {
-                                    $set('descripcion', $servicio->nombre);
-                                    $set('precio_unitario', $servicio->precio_base);
-                                    $set('porcentaje_iva', 21);
-                                }
+    // --- BLOQUE DE DEPURACIÓN TEMPORAL: Placeholder para mostrar el nombre del servicio ---
+    // Este Placeholder aparecerá solo en modo "Ver"
+    \Filament\Forms\Components\Placeholder::make('servicio_nombre_directo')
+        ->label('Nombre del Servicio (VERIFICACIÓN)')
+        ->content(function (\App\Models\FacturaItem $record) { // El $record aquí es la instancia de FacturaItem
+            // Intentamos acceder directamente al nombre del servicio a través de la relación.
+            // Si $record->servicio es null (relación no cargada o ID no válido),
+            // o si $record->servicio->nombre es null, mostrará un mensaje.
+            
+            // Puedes añadir un dd() aquí si quieres ver el record completo
+            // dd($record); 
 
-                                self::recalcularTotales($get, $set);
-                            })
-                            ->columnSpan(4),
+            return $record->servicio->nombre ?? 'Servicio no encontrado o ID nulo'; 
+        })
+        // Hazlo visible solo en la operación de 'view'
+        ->visible(fn (string $operation): bool => $operation === 'view')
+        ->columnSpan(4),
 
                         TextInput::make('descripcion')
                             ->required()
@@ -231,31 +260,186 @@ public static function recalcularTotales(Get $get, Set $set): void
 }
 
 
-    
     public static function table(Table $table): Table
-{
-    return $table
-        ->columns([
-            TextColumn::make('numero_factura')->searchable()->sortable(),
-            TextColumn::make('cliente.razon_social')->searchable()->sortable(),
-            TextColumn::make('fecha_emision')->date('d/m/Y')->sortable(),
-            TextColumn::make('total_factura')->money('EUR')->sortable(),
-            TextColumn::make('estado')
-                ->badge(),
-        ])
-        ->filters([
-            //
-        ])
-        ->actions([
-            Tables\Actions\EditAction::make(),
-            Tables\Actions\ViewAction::make(),
-        ])
-        ->bulkActions([
-            Tables\Actions\BulkActionGroup::make([
-                Tables\Actions\DeleteBulkAction::make(),
-            ]),
-        ]);
-}
+    {
+        return $table
+            ->columns([
+                TextColumn::make('numero_factura')
+                    ->label('Nº Factura') // Etiqueta más legible
+                    ->searchable()
+                    ->sortable()
+                    ->copyable() // Permite copiar el número con un clic
+                    ->copyMessage('Número de factura copiado al portapapeles.'),
+
+                TextColumn::make('cliente.razon_social')
+                    ->label('Cliente')
+                    ->searchable()
+                    ->sortable()
+                    ->description(fn (Factura $record): string => $record->cliente->cif ?? ''), // Muestra el CIF del cliente debajo
+                
+                TextColumn::make('fecha_emision')
+                    ->label('Emisión') // Etiqueta más corta y clara
+                    ->date('d/m/Y')
+                    ->sortable(),
+                
+              TextColumn::make('fecha_vencimiento')
+                ->label('Vencimiento')
+                ->date('d/m/Y')
+                ->sortable()
+                // CAMBIO AQUÍ: El tipo de retorno de la closure ahora es 'string|null'
+                ->color(fn (Factura $record): string|null => 
+                    ($record->estado === FacturaEstadoEnum::PENDIENTE_PAGO && $record->fecha_vencimiento?->isPast()) 
+                    ? 'danger' 
+                    : null // Cuando no se cumple la condición, retorna null
+                ),
+                  TextColumn::make('base_imponible')
+                ->label('Base Imponible')
+                ->money('EUR')
+                ->sortable()
+                ->alignEnd(), // Alinea a la derecha para números
+
+            TextColumn::make('total_iva')
+                ->label('IVA Total')
+                ->money('EUR')
+                ->sortable()
+                ->alignEnd(), // Alinea a la derecha para números    
+                TextColumn::make('total_factura')
+                    ->label('Total')
+                    ->money('EUR')
+                    ->sortable()
+                    ->color('primary') // Un color para destacar el total
+                    ->alignEnd(), // Alinea el texto a la derecha para números
+                
+                TextColumn::make('estado')
+                    ->label('Estado') // Etiqueta del badge
+                    ->badge(), // Utilizará HasLabel y HasColor de tu Enum
+            ])
+            ->filters([
+                // Filtro por Estado (con nuestro Enum)
+                SelectFilter::make('estado')
+                    ->options(FacturaEstadoEnum::class)
+                    ->label('Estado'),
+                
+                // Filtro por Cliente
+                SelectFilter::make('cliente_id')
+                    ->relationship('cliente', 'razon_social')
+                    ->searchable()
+                    ->preload()
+                    ->label('Cliente'),
+
+                // Filtro por Rango de Fechas de Emisión
+                Tables\Filters\Filter::make('fecha_emision')
+                   
+                    ->form([
+                        DatePicker::make('fecha_desde')
+                            ->label('Fecha de Emisión Desde')
+                            ->native(false),
+                        DatePicker::make('fecha_hasta')
+                            ->label('Fecha de Emisión Hasta')
+                            ->native(false),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['fecha_desde'],
+                                fn (Builder $query, $date): Builder => $query->whereDate('fecha_emision', '>=', $date),
+                            )
+                            ->when(
+                                $data['fecha_hasta'],
+                                fn (Builder $query, $date): Builder => $query->whereDate('fecha_emision', '<=', $date),
+                            );
+                    })
+                    ->label('Rango de Emisión'),
+            ],layout: FiltersLayout::AboveContent)
+            ->actions([
+                // Ver Factura (siempre visible)
+                Tables\Actions\ViewAction::make()
+                    ->label('') // Solo icono
+                    ->tooltip('Ver Detalles'), // Tooltip para indicar la acción
+                
+                // Acción de Pagar Factura (simulada o para enlazar a Stripe/pago manual)
+                TablesAction::make('marcar_pagada')
+                    ->label('') // Solo icono
+                    ->tooltip('Marcar como Pagada')
+                    ->icon('heroicon-o-currency-euro')
+                    ->color('success')
+                    ->visible(fn (Factura $record): bool => 
+                        $record->estado === FacturaEstadoEnum::PENDIENTE_PAGO || $record->estado === FacturaEstadoEnum::IMPAGADA
+                    )
+                    ->requiresConfirmation() // Pide confirmación antes de cambiar el estado
+                    ->action(function (Factura $record) {
+                        $record->update(['estado' => FacturaEstadoEnum::PAGADA]);
+                        Notification::make()
+                            ->title('Factura marcada como pagada.')
+                            ->success()
+                            ->send();
+                    }),
+
+                // Acción de Anular Factura
+                TablesAction::make('anular_factura')
+                    ->label('') // Solo icono
+                    ->tooltip('Anular Factura')
+                    ->icon('heroicon-o-x-circle')
+                    ->color('danger')
+                    ->visible(fn (Factura $record): bool => 
+                        $record->estado !== FacturaEstadoEnum::PAGADA && $record->estado !== FacturaEstadoEnum::ANULADA
+                    ) // Solo si no está ya pagada o anulada
+                    ->requiresConfirmation()
+                    ->action(function (Factura $record) {
+                        $record->update(['estado' => FacturaEstadoEnum::ANULADA]);
+                        Notification::make()
+                            ->title('Factura anulada.')
+                            ->success()
+                            ->send();
+                    }),
+                     // --- ¡NUEVA ACCIÓN: Generar PDF! ---
+            TablesAction::make('generar_pdf')
+                ->label('') // No queremos texto, solo el icono
+                ->tooltip('Generar PDF') // Tooltip al pasar el ratón
+                ->icon('heroicon-o-document-arrow-down') // Icono de descarga o documento
+                ->color('info') // Un color azul para la acción
+                // Definimos la URL a la que se dirigirá al hacer clic
+                ->url(fn (Factura $record): string => route('facturas.generar-pdf', $record)) // <-- Puntos importantes
+                ->openUrlInNewTab(), // <-- Abrir en nueva pestaña
+
+                // Si necesitas una acción de "Rectificar" o "Reclamar", iría aquí
+            ])
+            ->bulkActions([
+                Tables\Actions\BulkActionGroup::make([
+                    // Acción masiva para marcar como Pagada
+                    Tables\Actions\BulkAction::make('marcar_pagadas_seleccionadas')
+                        ->label('Marcar como Pagadas')
+                        ->icon('heroicon-o-currency-euro')
+                        ->color('success')
+                        ->action(function (Collection $records) {
+                            $records->each(fn (Factura $factura) => 
+                                $factura->estado = FacturaEstadoEnum::PAGADA
+                            );
+                            $records->each->save(); // Guardar los cambios
+                            Notification::make()->title('Facturas marcadas como pagadas.')->success()->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    
+                    // Acción masiva para Anular
+                    Tables\Actions\BulkAction::make('anular_seleccionadas')
+                        ->label('Anular seleccionadas')
+                        ->icon('heroicon-o-x-circle')
+                        ->color('danger')
+                        ->action(function (Collection $records) {
+                            $records->each(fn (Factura $factura) => 
+                                $factura->estado = FacturaEstadoEnum::ANULADA
+                            );
+                            $records->each->save(); // Guardar los cambios
+                            Notification::make()->title('Facturas anuladas.')->success()->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+
+                    // Eliminamos DeleteBulkAction si preferimos anular
+                    // Tables\Actions\DeleteBulkAction::make(),
+                ]),
+            ])
+            ->defaultSort('fecha_emision', 'desc'); // Ordenar por fecha de emisión descendente por defecto
+    }
 
     public static function getRelations(): array
     {
