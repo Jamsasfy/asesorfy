@@ -43,7 +43,10 @@ use Illuminate\Support\HtmlString;
 use App\Models\Proyecto;
 use App\Enums\ProyectoEstadoEnum;
 use Filament\Forms\Components\Toggle;
-use Illuminate\Support\Facades\Blade;
+use App\Models\User;
+use App\Enums\VentaCorreccionEstadoEnum; 
+use Filament\Tables\Actions\Action;
+use Filament\Notifications\Notification;
 
 
 class VentaResource extends Resource implements HasShieldPermissions
@@ -581,52 +584,52 @@ public static function form(Form $form): Form
 
     
 
-     // COLUMNA: Descuento Mensual Recurrente
-            TextColumn::make('descuento_mensual_recurrente_total')
-                ->label('Dto. Mensual Rec.')
-                ->badge()
-                ->formatStateUsing(function ($state, Venta $record): string {
-                    if ((float)$state > 0) {
-                        $duracionTexto = '';
-                        $descuentoEnMesesDetectado = false;
-                        foreach ($record->items as $item) {
-                            $item->loadMissing('servicio');
-                            if ($item->servicio && $item->servicio->tipo->value === 'recurrente' && !empty($item->descuento_duracion_meses) && (float)$item->descuento_valor > 0) {
-                                $duracionTexto = " - {$item->descuento_duracion_meses} meses";
-                                $descuentoEnMesesDetectado = true;
-                                break;
-                            }
-                        }
-                        return '-' . number_format($state, 2, ',', '.') . ' €/mes' . ($descuentoEnMesesDetectado ? $duracionTexto : '');
+     // ▼▼▼ REEMPLAZA ESTA COLUMNA ▼▼▼
+    TextColumn::make('descuento_mensual_recurrente') // Nombre virtual
+        ->label('Dto. Mensual Rec.')
+        ->badge()
+        ->getStateUsing(function (Venta $record): float {
+            // Calcula el descuento total solo para items recurrentes
+            return $record->items
+                ->where('servicio.tipo', ServicioTipoEnum::RECURRENTE)
+                ->sum(function ($item) {
+                    $subtotalBase = (float)($item->cantidad ?? 1) * (float)($item->precio_unitario ?? 0);
+                    $subtotalAplicado = (float)($item->subtotal_aplicado ?? $subtotalBase);
+                    return $subtotalBase - $subtotalAplicado;
+                });
+        })
+        ->formatStateUsing(function ($state, Venta $record): string {
+            if ($state > 0) {
+                $duracionTexto = '';
+                // Lógica para encontrar la duración (opcional)
+                foreach ($record->items as $item) {
+                    if ($item->servicio?->tipo === ServicioTipoEnum::RECURRENTE && !empty($item->descuento_duracion_meses)) {
+                        $duracionTexto = " ({$item->descuento_duracion_meses} meses)";
+                        break;
                     }
-                    return 'Sin Dto.'; // <<< CAMBIO AQUI: Texto para cuando no hay descuento
-                })
-               ->color(function ($state): string {
-                    // <<< CAMBIO AQUI: Color condicional
-                    return ((float)$state > 0) ? 'danger' : 'info'; // 'danger' para rojo, 'gray' para azul más oscuro o gris
-                })
-                ->sortable(false)
-                ->toggleable(isToggledHiddenByDefault: false),
+                }
+                return '-' . number_format($state, 2, ',', '.') . ' €/mes' . $duracionTexto;
+            }
+            return 'Sin Dto.';
+        })
+        ->color(fn ($state) => $state > 0 ? 'danger' : 'gray'),
 
-            // COLUMNA: Descuento Único Total
-            TextColumn::make('descuento_unico_total') // Usa el accesor
-                ->label('Dto. Único') // Etiqueta clara
-                ->badge()
-                // Formato que muestra solo el monto
-                ->formatStateUsing(function ($state): string {
-                    if ((float)$state > 0) {
-                        return '-' . number_format($state, 2, ',', '.') . ' €'; // Muestra el monto total
-                    }
-                    return 'Sin Dto.';
-                })
-                // Color del badge
-                ->color(function ($state): string {
-                    return ((float)$state > 0) ? 'danger' : 'info';
-                })
-                // <<< ELIMINADO: Tooltip
-                ->sortable(false)
-                ->toggleable(isToggledHiddenByDefault: false),
-
+    // ▼▼▼ Y REEMPLAZA ESTA OTRA COLUMNA ▼▼▼
+    TextColumn::make('descuento_unico') // Nombre virtual
+        ->label('Dto. Único')
+        ->badge()
+        ->getStateUsing(function (Venta $record): float {
+            // Calcula el descuento total solo para items únicos
+            return $record->items
+                ->where('servicio.tipo', ServicioTipoEnum::UNICO)
+                ->sum(function ($item) {
+                    $subtotalBase = (float)($item->cantidad ?? 1) * (float)($item->precio_unitario ?? 0);
+                    $subtotalAplicado = (float)($item->subtotal_aplicado ?? $subtotalBase);
+                    return $subtotalBase - $subtotalAplicado;
+                });
+        })
+        ->formatStateUsing(fn ($state) => $state > 0 ? '-' . number_format($state, 2, ',', '.') . ' €' : 'Sin Dto.')
+        ->color(fn ($state) => $state > 0 ? 'danger' : 'gray'),
 
                 Tables\Columns\TextColumn::make('importe_total')
                     ->label('Importe Total')
@@ -640,12 +643,12 @@ public static function form(Form $form): Form
                     ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
                 ->label('Venta creada')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->dateTime('d/m/y - H:m')
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('updated_at')
                 ->label('Venta actualizada')
                 ->dateTime('d/m/y - H:m')
+                ->toggleable(isToggledHiddenByDefault: true)
                     ->sortable(),
                    
             ])
@@ -714,7 +717,53 @@ public static function form(Form $form): Form
                     Tables\Actions\ViewAction::make()
                         ->label('') // Sin texto, solo el icono
                         ->tooltip('Ver Venta'),
-                Tables\Actions\EditAction::make(),
+                Tables\Actions\EditAction::make()
+                 ->visible(function (Venta $record): bool {
+            // El botón será visible solo si la venta NO tiene facturas asociadas.
+            return !$record->facturas()->exists();
+        }),
+      Action::make('solicitar_correccion')
+    ->label('Solicitar Corrección')
+    ->icon('heroicon-o-chat-bubble-left-right')
+    ->color('warning')
+    ->visible(fn (Venta $record): bool => 
+        $record->facturas()->exists() &&
+        empty($record->getRawOriginal('correccion_estado')) &&
+        auth()->user()->hasAnyRole(['comercial', 'coordinador', 'super_admin'])
+    )
+    ->form([
+        Textarea::make('motivo')
+            ->label('Motivo de la corrección')
+            ->required()
+            ->helperText('Explica detalladamente por qué es necesario modificar esta venta.'),
+    ])
+    ->action(function (Venta $record, array $data): void {
+        // Actualizamos la venta con los datos de la solicitud
+        $record->update([
+            'correccion_estado'            => \App\Enums\VentaCorreccionEstadoEnum::SOLICITADA->value,
+            'correccion_motivo'            => $data['motivo'],
+            'correccion_solicitada_at'     => now(),
+            'correccion_solicitada_por_id' => auth()->id(),
+        ]);
+
+        // Notificar a admins y coordinadores
+        $destinatarios = \App\Models\User::whereHas('roles', fn ($q) =>
+            $q->whereIn('name', ['super_admin', 'coordinador'])
+        )->get();
+
+        Notification::make()
+            ->title('Solicitud de Corrección de Venta')
+            ->body("El comercial " . auth()->user()->name . " solicita corregir la Venta #{$record->id}.")
+            ->warning()
+            ->sendToDatabase($destinatarios);
+
+        // Mensaje de confirmación
+        Notification::make()
+            ->title('Solicitud enviada correctamente')
+            ->success()
+            ->send();
+    }),
+
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -868,30 +917,59 @@ public static function infolist(Infolist $infolist): Infolist
             
             // --- BLOQUE 2: Resumen Económico ---
             InfoSection::make('Resumen Económico')
-                ->columns(2)
-                ->schema([
-                    Grid::make(2)->schema([
-                        TextEntry::make('importe_base_sin_descuento')
-                            ->label('Importe Original (Base)')->money('EUR')->helperText('Este es el coste real de los servicios contratados incluyendo el primer mes del servicio si es recurrente.'),
-                        TextEntry::make('descuento_servicios_unicos')
-                            ->label('Dto. Servicios Únicos')->money('EUR')->color('danger'),
-                        TextEntry::make('importe_total')
-                            ->label('Importe Final (Base)')->money('EUR')->helperText('Final sin IVA del coste de los servicios con el descuento aplicado.')->weight('bold'),
-                        TextEntry::make('ahorro_total_recurrente')
-                            ->label('Ahorro Total Recurrente')->money('EUR')->color('danger')->weight('bold')
-                            ->helperText(function (Venta $record): ?string {
-                                $descuentoMensual = $record->descuento_recurrente_mensual;
-                                if ($descuentoMensual > 0) {
-                                    return '(-' . number_format($descuentoMensual, 2, ',', '.') . ' €/mes)';
-                                }
-                                return null;
-                            }),
-                    ])->columnSpan(1),
-                    Grid::make(1)->schema([
-                         TextEntry::make('importe_total_con_iva')
-                            ->label('Total a Facturar (IVA incl.)')->money('EUR')->weight('extrabold')->size('lg')->color('success'),
-                    ])->columnSpan(1),
-                ]),
+    ->columns(2)
+    ->schema([
+        Grid::make(2)->schema([
+            TextEntry::make('importe_base_sin_descuento')
+                ->label('Importe Original (Base)')->money('EUR')
+                ->helperText('Coste real de los servicios sin descuentos.')
+                ->state(fn (Venta $record): float => $record->items->sum('subtotal')),
+
+            TextEntry::make('descuento_servicios_unicos')
+                ->label('Dto. Servicios Únicos')->money('EUR')->color('danger')
+                ->state(function (Venta $record): float {
+                    return $record->items
+                        ->where('servicio.tipo', ServicioTipoEnum::UNICO)
+                        ->sum(fn ($item) => ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado);
+                }),
+
+            TextEntry::make('importe_total')
+                ->label('Importe Final (Base)')->money('EUR')
+                ->helperText('Final sin IVA con descuentos aplicados.')
+                ->weight('bold'),
+
+            TextEntry::make('ahorro_total_recurrente')
+    ->label('Ahorro Total Recurrente')->money('EUR')->color('danger')->weight('bold')
+    ->state(function (Venta $record): float {
+        $ahorroTotal = $record->items
+            ->where('servicio.tipo', ServicioTipoEnum::RECURRENTE)
+            ->sum(function ($item) {
+                $descuentoMensualItem = ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado;
+                $meses = $item->descuento_duracion_meses ?? 1;
+                return $descuentoMensualItem * $meses;
+            });
+        return round($ahorroTotal, 2);
+    })
+    // ▼▼▼ CAMBIO AQUÍ ▼▼▼
+    ->helperText(function (Venta $record): ?string {
+        // Calculamos el descuento mensual aquí directamente
+        $descuentoMensual = $record->items
+            ->where('servicio.tipo', ServicioTipoEnum::RECURRENTE)
+            ->sum(fn ($item) => ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado);
+
+        if ($descuentoMensual > 0) {
+            return '(-' . number_format($descuentoMensual, 2, ',', '.') . ' €/mes)';
+        }
+        return null;
+    }),
+        ])->columnSpan(1),
+        
+        Grid::make(1)->schema([
+             TextEntry::make('importe_total_con_iva')
+                ->label('Total a Facturar (IVA incl.)')->money('EUR')->weight('extrabold')->size('lg')->color('success')
+                ->state(fn(Venta $record) => round($record->importe_total * 1.21, 2)), // Asumiendo IVA 21%
+        ])->columnSpan(1),
+    ]),
 
 
             // --- BLOQUE 3: Desglose de Servicios Vendidos ---

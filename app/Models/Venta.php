@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\ClienteSuscripcionEstadoEnum;
 use App\Enums\ProyectoEstadoEnum;
 use App\Enums\ServicioTipoEnum;
+use App\Enums\VentaCorreccionEstadoEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,6 +19,7 @@ use Filament\Notifications\Actions\Action;
 use App\Filament\Resources\ProyectoResource;
 
 
+
 class Venta extends Model
 {
     use HasFactory;
@@ -29,12 +31,17 @@ class Venta extends Model
         'fecha_venta',
         'importe_total', // Lo calcularemos automáticamente, pero debe ser fillable
         'observaciones',
-        // No incluimos 'tipo_venta' porque lo eliminamos
+         'correccion_estado',
+    'correccion_solicitada_at',
+    'correccion_solicitada_por_id',
+    'correccion_motivo',
     ];
 
     protected $casts = [
         'fecha_venta' => 'datetime',
         'importe_total' => 'decimal:2', // Asegura que se maneja como decimal
+        'correccion_estado' => VentaCorreccionEstadoEnum::class,
+    'correccion_solicitada_at' => 'datetime',
     ];
 
     protected $appends = ['tipo_venta'];
@@ -51,6 +58,11 @@ class Venta extends Model
     {
         return $this->belongsTo(Lead::class);
     }
+
+    public function solicitanteCorreccion(): BelongsTo
+{
+    return $this->belongsTo(User::class, 'correccion_solicitada_por_id');
+}
 
     // Relación muchos-a-uno con User (el comercial), nombrada 'comercial'
     public function comercial(): BelongsTo // <-- Nombre del método cambiado a 'comercial'
@@ -73,6 +85,13 @@ class Venta extends Model
 {
     return $this->hasMany(ClienteSuscripcion::class, 'venta_origen_id');
 }
+
+public function facturas(): HasMany
+{
+    return $this->hasMany(Factura::class);
+}
+
+
 
     // Opcional: Accessor para obtener el tipo de venta (puntual, recurrente, mixta)
     // basado en los tipos de servicios de sus items.
@@ -148,49 +167,7 @@ class Venta extends Model
             $suscripcion->save();
         }
     }
-}
-
-     
-    
-   /**
- * 1. Calcula el descuento total SOLO de los servicios de pago único.
- */
-protected function descuentoServiciosUnicos(): Attribute
-{
-    return Attribute::make(get: fn (): float => $this->items
-        ->where('servicio.tipo', ServicioTipoEnum::UNICO)
-        ->sum(fn ($item) => ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado)
-    );
-}
-
-/**
- * 2. Calcula el descuento que se aplicará en UNA cuota mensual.
- */
-protected function descuentoRecurrenteMensual(): Attribute
-{
-    return Attribute::make(get: fn (): float => $this->items
-        ->where('servicio.tipo', ServicioTipoEnum::RECURRENTE)
-        ->sum(fn ($item) => ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado)
-    );
-}
-
-/**
- * 3. Calcula el AHORRO TOTAL para el cliente de los descuentos recurrentes.
- * (Descuento de un mes * número de meses de la oferta)
- */
-protected function ahorroTotalRecurrente(): Attribute
-{
-    return Attribute::make(get: function (): float {
-        $ahorroTotal = $this->items
-            ->where('servicio.tipo', ServicioTipoEnum::RECURRENTE)
-            ->sum(function ($item) {
-                $descuentoMensualItem = ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado;
-                $meses = $item->descuento_duracion_meses ?? 1;
-                return $descuentoMensualItem * $meses;
-            });
-        return round($ahorroTotal, 2);
-    });
-}
+}  
 
 protected function importeBaseSinDescuento(): Attribute
 {
