@@ -1,0 +1,19 @@
+@keyframes pulse-grow {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1); /* Crece un 10% */
+    opacity: 0.4;        /* Se hace más transparente */
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.blink-danger {
+  /* Usamos la nueva animación */
+  animation: pulse-grow 1.8s ease-in-out infinite; 
+}

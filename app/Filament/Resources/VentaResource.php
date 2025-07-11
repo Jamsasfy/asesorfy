@@ -47,6 +47,9 @@ use App\Models\User;
 use App\Enums\VentaCorreccionEstadoEnum; 
 use Filament\Tables\Actions\Action;
 use Filament\Notifications\Notification;
+use Filament\Forms\Components\Placeholder;
+
+
 
 
 class VentaResource extends Resource implements HasShieldPermissions
@@ -473,6 +476,36 @@ public static function form(Form $form): Form
                         
                 ])
                 ->columnSpanFull(),
+
+                 // ▼▼▼ AÑADE ESTA NUEVA SECCIÓN ▼▼▼
+    Section::make('Gestión de la Corrección')
+        ->icon('heroicon-o-pencil-square')         
+        ->collapsible()
+        // Esta sección solo se muestra en la página de 'edit' Y si la venta tiene un estado de corrección
+        ->visible(fn (string $operation, Venta $record = null): bool => 
+            $operation === 'edit' && !is_null($record?->correccion_estado)
+        )
+        ->schema([
+            // Selector para que el admin cambie el estado
+            Select::make('correccion_estado')
+                ->label('Estado de la Solicitud')
+                ->options(VentaCorreccionEstadoEnum::class)
+                ->required(),
+
+            // Campos de solo lectura para mostrar la información de la solicitud
+            Placeholder::make('solicitante')
+                ->label('Solicitado por')
+                ->content(fn (Venta $record): ?string => $record->solicitanteCorreccion?->name),
+
+            Placeholder::make('fecha_solicitud')
+                ->label('Fecha de la Solicitud')
+                ->content(fn (Venta $record): ?string => $record->correccion_solicitada_at?->format('d/m/Y H:i')),
+            
+            Placeholder::make('motivo_solicitud')
+                ->label('Motivo del Comercial')
+                ->content(fn (Venta $record): ?string => $record->correccion_motivo),
+        ])
+        ->columns(2),
         ]);
 }
 
@@ -710,8 +743,12 @@ public static function form(Form $form): Form
                     })
                     ->toggle() // Se activa/desactiva con un switch
                     ->label('Mostrar con Descuento'),
-            ],layout: FiltersLayout::AboveContent)
-                ->filtersFormColumns(7)
+                      Tables\Filters\Filter::make('correccion_solicitada')
+        ->label('Mostrar solo con corrección solicitada')
+        ->query(fn (Builder $query): Builder => $query->where('correccion_estado', VentaCorreccionEstadoEnum::SOLICITADA))
+        ->toggle(),
+                        ],layout: FiltersLayout::AboveContent)
+                            ->filtersFormColumns(7)
             ->actions([
                 // 1. Añadimos la acción para VER los detalles (el ojo)
                     Tables\Actions\ViewAction::make()
@@ -740,7 +777,7 @@ public static function form(Form $form): Form
     ->action(function (Venta $record, array $data): void {
         // Actualizamos la venta con los datos de la solicitud
         $record->update([
-            'correccion_estado'            => \App\Enums\VentaCorreccionEstadoEnum::SOLICITADA->value,
+            'correccion_estado'            => VentaCorreccionEstadoEnum::SOLICITADA->value,
             'correccion_motivo'            => $data['motivo'],
             'correccion_solicitada_at'     => now(),
             'correccion_solicitada_por_id' => auth()->id(),
@@ -763,6 +800,49 @@ public static function form(Form $form): Form
             ->success()
             ->send();
     }),
+     Action::make('estado_correccion')
+    // ▼▼▼ CAMBIO AQUÍ ▼▼▼
+    ->label(fn (Venta $record): string => match ($record->correccion_estado) {
+        VentaCorreccionEstadoEnum::SOLICITADA => 'Corrección Solicitada',
+        VentaCorreccionEstadoEnum::EN_PROCESO => 'Corrección en Proceso',
+        VentaCorreccionEstadoEnum::COMPLETADA => 'Corrección Completada',
+        VentaCorreccionEstadoEnum::RECHAZADA => 'Corrección Rechazada',
+    })
+    ->color(fn (Venta $record): string => match ($record->correccion_estado) {
+        VentaCorreccionEstadoEnum::SOLICITADA => 'danger',
+        VentaCorreccionEstadoEnum::EN_PROCESO => 'primary',
+        VentaCorreccionEstadoEnum::COMPLETADA => 'success',
+        VentaCorreccionEstadoEnum::RECHAZADA => 'gray',
+    })
+    ->icon('heroicon-o-exclamation-triangle')
+    ->disabled()
+    ->visible(fn (Venta $record): bool => !is_null($record->correccion_estado))
+   /*   ->extraAttributes(function (Venta $record): array {
+        if ($record->correccion_estado === VentaCorreccionEstadoEnum::SOLICITADA) {
+            return ['class' => 'blink-danger'];
+        }
+        return [];
+    }) */
+        ->tooltip(fn (Venta $record): ?string => $record->correccion_motivo),
+     Action::make('gestionar_correccion')
+        ->label('Gestionar Corrección')
+        ->icon('heroicon-o-pencil-square')
+        ->color('success')
+        // Visible solo si el estado es 'solicitada' y el usuario es admin/coordinador
+        ->visible(fn (Venta $record): bool => 
+            $record->correccion_estado === VentaCorreccionEstadoEnum::SOLICITADA &&
+            auth()->user()->hasAnyRole(['super_admin', 'coordinador'])
+        )
+         ->extraAttributes(function (Venta $record): array {
+        if ($record->correccion_estado === VentaCorreccionEstadoEnum::SOLICITADA) {
+            return ['class' => 'blink-danger'];
+        }
+        return [];
+    })
+        // Al hacer clic, simplemente redirige a la página de edición normal
+        ->url(fn (Venta $record): string => VentaResource::getUrl('edit', ['record' => $record]))
+          ->openUrlInNewTab(),
+
 
             ])
             ->bulkActions([

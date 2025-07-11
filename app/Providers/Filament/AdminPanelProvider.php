@@ -27,6 +27,8 @@ use App\Filament\Widgets\ClientesPorMesChart;
 use App\Filament\Resources\LeadResource;
 use Filament\Navigation\NavigationGroup;
 use Filament\Navigation\NavigationItem;
+use Filament\Support\Assets\Css;
+use Filament\Support\Facades\FilamentAsset;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -42,7 +44,7 @@ class AdminPanelProvider extends PanelProvider
         ->colors([
             'primary' => '#41c0e9',
         ])
-       
+         
         ->font('Varela Round')
         ->breadcrumbs(false)
         ->maxContentWidth(MaxWidth::Full)
@@ -87,4 +89,15 @@ class AdminPanelProvider extends PanelProvider
                 \BezhanSalleh\FilamentShield\FilamentShieldPlugin::make(),
             ]);
     }
+
+    public function boot(): void
+{
+    // ... (código que ya tuvieras)
+
+    FilamentAsset::register([
+        Css::make('custom-stylesheet', asset('css/custom.css')),
+    ]);
+}
+
+
 }

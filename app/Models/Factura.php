@@ -41,4 +41,8 @@ class Factura extends Model
     {
         return $this->hasMany(FacturaItem::class);
     }
+    public function venta(): BelongsTo
+        {
+            return $this->belongsTo(Venta::class);
+        }
 }

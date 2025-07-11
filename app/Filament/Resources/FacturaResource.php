@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Enums\FacturaEstadoEnum;
+use App\Enums\VentaCorreccionEstadoEnum;
 use App\Filament\Resources\FacturaResource\Pages;
 use App\Models\Factura;
 use App\Models\Servicio;
@@ -350,6 +351,14 @@ public static function recalcularTotales(Get $get, Set $set): void
                             );
                     })
                     ->label('Rango de Emisión'),
+                      Tables\Filters\Filter::make('con_correccion_solicitada')
+        ->label('Con Corrección Solicitada')
+        ->query(fn (Builder $query): Builder => 
+            $query->whereHas('venta', fn (Builder $q) => 
+                $q->where('correccion_estado', VentaCorreccionEstadoEnum::SOLICITADA)
+            )
+        )
+        ->toggle(),
             ],layout: FiltersLayout::AboveContent)
             ->actions([
                 // Ver Factura (siempre visible)
@@ -358,7 +367,7 @@ public static function recalcularTotales(Get $get, Set $set): void
                     ->tooltip('Ver Detalles'), // Tooltip para indicar la acción
                 
                 // Acción de Pagar Factura (simulada o para enlazar a Stripe/pago manual)
-                TablesAction::make('marcar_pagada')
+                Tables\Actions\Action::make('marcar_pagada')
                     ->label('') // Solo icono
                     ->tooltip('Marcar como Pagada')
                     ->icon('heroicon-o-currency-euro')
@@ -376,7 +385,7 @@ public static function recalcularTotales(Get $get, Set $set): void
                     }),
 
                 // Acción de Anular Factura
-                TablesAction::make('anular_factura')
+                Tables\Actions\Action::make('anular_factura')
                     ->label('') // Solo icono
                     ->tooltip('Anular Factura')
                     ->icon('heroicon-o-x-circle')
@@ -393,7 +402,7 @@ public static function recalcularTotales(Get $get, Set $set): void
                             ->send();
                     }),
                      // --- ¡NUEVA ACCIÓN: Generar PDF! ---
-            TablesAction::make('generar_pdf')
+           Tables\Actions\Action::make('generar_pdf')
                 ->label('') // No queremos texto, solo el icono
                 ->tooltip('Generar PDF') // Tooltip al pasar el ratón
                 ->icon('heroicon-o-document-arrow-down') // Icono de descarga o documento
