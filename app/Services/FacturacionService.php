@@ -8,6 +8,7 @@ use App\Models\ClienteSuscripcion; // <-- Asegúrate de que esta línea esté
 use App\Enums\FacturaEstadoEnum; // <-- Asegúrate de que esta línea esté
 use App\Enums\ClienteSuscripcionEstadoEnum; // <-- Asegúrate de que esta línea esté
 use App\Enums\ServicioTipoEnum; // <-- Asegúrate de que esta línea esté
+use App\Models\Venta;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -16,40 +17,44 @@ class FacturacionService
 {
     /**
      * Genera el siguiente número de factura usando la tabla de contadores.
-     * Este método es usado tanto por facturas únicas como recurrentes.
+     * Este método es usado tanto por facturas únicas como recurrentes YH RECTIFICATVAS.
      */
-    public static function generarSiguienteNumeroFactura(): array
-    {
-        return DB::transaction(function () {
-            $formato = ConfiguracionService::get('formato_factura', 'FR{YY}-00000');
-            $prefijoSerie = substr($formato, 0, strpos($formato, '{'));
+    public static function generarSiguienteNumeroFactura(string $tipo = 'normal'): array
+{
+    return DB::transaction(function () use ($tipo) {
+        // 1. Decidimos qué formato y prefijo usar
+        $esRectificativa = ($tipo === 'rectificativa');
+        $formatoKey = $esRectificativa ? 'formato_factura_rectificativa' : 'formato_factura';
+        $defaultFormato = $esRectificativa ? 'REC{YY}-00000' : 'FR{YY}-00000';
+        
+        $formato = ConfiguracionService::get($formatoKey, $defaultFormato);
+        $prefijoSerie = substr($formato, 0, strpos($formato, '{'));
 
-            $anoActual = Carbon::now()->year;
+        // 2. Obtenemos el año actual
+        $anoActual = Carbon::now()->year;
 
-            $contador = ContadorFactura::lockForUpdate()->firstOrCreate(
-                [
-                    'serie' => $prefijoSerie,
-                    'anio'  => $anoActual,
-                ],
-                [
-                    'ultimo_numero' => 0
-                ]
-            );
+        // 3. Buscamos o creamos el contador para esta serie y año
+        $contador = ContadorFactura::lockForUpdate()->firstOrCreate(
+            ['serie' => $prefijoSerie, 'anio' => $anoActual],
+            ['ultimo_numero' => 0]
+        );
 
-            $nuevoNumero = $contador->ultimo_numero + 1;
-            $contador->update(['ultimo_numero' => $nuevoNumero]);
+        // 4. Incrementamos y guardamos
+        $nuevoNumero = $contador->ultimo_numero + 1;
+        $contador->update(['ultimo_numero' => $nuevoNumero]);
 
-            $anoDosDigitos = Carbon::now()->format('y');
-            $serieCompleta = "{$prefijoSerie}{$anoDosDigitos}-";
-            $padding = strlen(substr($formato, strrpos($formato, '-') + 1));
-            $numeroConPadding = str_pad($nuevoNumero, $padding, '0', STR_PAD_LEFT);
+        // 5. Construimos el número de factura final
+        $anoDosDigitos = Carbon::now()->format('y');
+        $serieCompleta = "{$prefijoSerie}{$anoDosDigitos}-";
+        $padding = strlen(substr($formato, strrpos($formato, '-') + 1));
+        $numeroConPadding = str_pad($nuevoNumero, $padding, '0', STR_PAD_LEFT);
 
-            return [
-                'serie' => $serieCompleta,
-                'numero_factura' => $serieCompleta . $numeroConPadding,
-            ];
-        });
-    }
+        return [
+            'serie' => $serieCompleta,
+            'numero_factura' => $serieCompleta . $numeroConPadding,
+        ];
+    });
+}
 
     /**
      * Genera una factura para una ClienteSuscripcion de tipo UNICO.
@@ -169,4 +174,63 @@ class FacturacionService
             }
         });
     }
+
+ public static function generarFacturaParaVenta(Venta $venta): Factura
+{
+    $datosNuevaFactura = self::generarSiguienteNumeroFactura();
+
+    // Decidimos el estado inicial (PAGADA si todos los servicios son únicos)
+    $todosSonUnicos = $venta->items->every(fn ($item) => $item->servicio->tipo === ServicioTipoEnum::UNICO);
+    $estadoInicial = $todosSonUnicos ? FacturaEstadoEnum::PAGADA : FacturaEstadoEnum::PENDIENTE_PAGO;
+
+    // Creamos la cabecera de la factura
+    $factura = Factura::create([
+        'cliente_id' => $venta->cliente_id,
+        'venta_id' => $venta->id,
+        'serie' => $datosNuevaFactura['serie'],
+        'numero_factura' => $datosNuevaFactura['numero_factura'],
+        'fecha_emision' => now(),
+        'fecha_vencimiento' => now()->addDays(15),
+        'estado' => $estadoInicial,
+        'base_imponible' => 0,
+        'total_iva' => 0,
+        'total_factura' => 0,
+    ]);
+
+    $ivaPorcentaje = ConfiguracionService::get('IVA_general', 21.00);
+    $baseTotal = 0;
+
+    // --- LÓGICA CORREGIDA ---
+    // Recorremos los items de la VENTA para construir las líneas de la factura
+    foreach ($venta->items as $itemVenta) {
+        
+        // Calculamos el descuento total para esta línea
+        $precioOriginalTotal = $itemVenta->cantidad * $itemVenta->precio_unitario;
+        $descuentoAplicado = $precioOriginalTotal - $itemVenta->subtotal_aplicado;
+
+        // Creamos la línea de la factura con todos los detalles
+        $factura->items()->create([
+            'descripcion' => $itemVenta->nombre_final,
+            'cantidad' => $itemVenta->cantidad,
+            'precio_unitario' => $itemVenta->precio_unitario, // <-- Usamos el precio original
+            'descuento' => $descuentoAplicado,         // <-- Guardamos el descuento calculado
+            'subtotal' => $itemVenta->subtotal_aplicado,   // <-- El subtotal ya tiene el descuento
+            'porcentaje_iva' => $ivaPorcentaje,
+        ]);
+        
+        $baseTotal += $itemVenta->subtotal_aplicado;
+    }
+
+    // Actualizamos los totales finales en la factura
+    $ivaTotal = $baseTotal * ($ivaPorcentaje / 100);
+    $factura->update([
+        'base_imponible' => $baseTotal,
+        'total_iva' => $ivaTotal,
+        'total_factura' => $baseTotal + $ivaTotal,
+    ]);
+
+    return $factura;
+}
+
+
 }

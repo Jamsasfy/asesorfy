@@ -960,10 +960,8 @@ public static function infolist(Infolist $infolist): Infolist
                     ->schema([
                         TextEntry::make('cliente.razon_social')->label('Cliente')
                             ->url(fn (Venta $record) => ClienteResource::getUrl('view', ['record' => $record->cliente_id]))->openUrlInNewTab()->icon('heroicon-m-user-circle')->color('primary')->weight('semibold')->columnSpanFull(),
-
                         TextEntry::make('fecha_venta')->label('Fecha de Venta')
                             ->icon('heroicon-m-calendar-days')->dateTime('d/m/Y H:i'),
-
                         TextEntry::make('observaciones')->label('Observaciones')
                             ->placeholder('Sin observaciones.')->columnSpanFull(),
                     ]),
@@ -997,82 +995,72 @@ public static function infolist(Infolist $infolist): Infolist
             
             // --- BLOQUE 2: Resumen Económico ---
             InfoSection::make('Resumen Económico')
-    ->columns(2)
-    ->schema([
-        Grid::make(2)->schema([
-            TextEntry::make('importe_base_sin_descuento')
-                ->label('Importe Original (Base)')->money('EUR')
-                ->helperText('Coste real de los servicios sin descuentos.')
-                ->state(fn (Venta $record): float => $record->items->sum('subtotal')),
+                ->columns(2)
+                ->schema([
+                    Grid::make(2)->schema([
+                        TextEntry::make('importe_base_sin_descuento')
+                            ->label('Importe Original (Base)')->money('EUR')
+                            ->helperText('Coste real de los servicios sin descuentos.')
+                            ->state(fn (Venta $record): float => $record->items->sum('subtotal')),
+                        TextEntry::make('descuento_servicios_unicos')
+                            ->label('Dto. Servicios Únicos')->money('EUR')->color('danger')
+                            ->state(function (Venta $record): float {
+                                return $record->items
+                                    ->where('servicio.tipo', ServicioTipoEnum::UNICO)
+                                    ->sum(fn ($item) => ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado);
+                            }),
+                        TextEntry::make('importe_total')
+                            ->label('Importe Final (Base)')->money('EUR')
+                            ->helperText('Final sin IVA con descuentos aplicados.')
+                            ->weight('bold'),
+                        TextEntry::make('ahorro_total_recurrente')
+                            ->label('Ahorro Total Recurrente')->money('EUR')->color('danger')->weight('bold')
+                            ->state(function (Venta $record): float {
+                                $ahorroTotal = $record->items
+                                    ->where('servicio.tipo', ServicioTipoEnum::RECURRENTE)
+                                    ->sum(function ($item) {
+                                        $descuentoMensualItem = ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado;
+                                        $meses = $item->descuento_duracion_meses ?? 1;
+                                        return $descuentoMensualItem * $meses;
+                                    });
+                                return round($ahorroTotal, 2);
+                            })
+                            ->helperText(function (Venta $record): ?string {
+                                $descuentoMensual = $record->items
+                                    ->where('servicio.tipo', ServicioTipoEnum::RECURRENTE)
+                                    ->sum(fn ($item) => ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado);
 
-            TextEntry::make('descuento_servicios_unicos')
-                ->label('Dto. Servicios Únicos')->money('EUR')->color('danger')
-                ->state(function (Venta $record): float {
-                    return $record->items
-                        ->where('servicio.tipo', ServicioTipoEnum::UNICO)
-                        ->sum(fn ($item) => ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado);
-                }),
-
-            TextEntry::make('importe_total')
-                ->label('Importe Final (Base)')->money('EUR')
-                ->helperText('Final sin IVA con descuentos aplicados.')
-                ->weight('bold'),
-
-            TextEntry::make('ahorro_total_recurrente')
-    ->label('Ahorro Total Recurrente')->money('EUR')->color('danger')->weight('bold')
-    ->state(function (Venta $record): float {
-        $ahorroTotal = $record->items
-            ->where('servicio.tipo', ServicioTipoEnum::RECURRENTE)
-            ->sum(function ($item) {
-                $descuentoMensualItem = ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado;
-                $meses = $item->descuento_duracion_meses ?? 1;
-                return $descuentoMensualItem * $meses;
-            });
-        return round($ahorroTotal, 2);
-    })
-    // ▼▼▼ CAMBIO AQUÍ ▼▼▼
-    ->helperText(function (Venta $record): ?string {
-        // Calculamos el descuento mensual aquí directamente
-        $descuentoMensual = $record->items
-            ->where('servicio.tipo', ServicioTipoEnum::RECURRENTE)
-            ->sum(fn ($item) => ($item->cantidad * $item->precio_unitario) - $item->subtotal_aplicado);
-
-        if ($descuentoMensual > 0) {
-            return '(-' . number_format($descuentoMensual, 2, ',', '.') . ' €/mes)';
-        }
-        return null;
-    }),
-        ])->columnSpan(1),
-        
-        Grid::make(1)->schema([
-             TextEntry::make('importe_total_con_iva')
-                ->label('Total a Facturar (IVA incl.)')->money('EUR')->weight('extrabold')->size('lg')->color('success')
-                ->state(fn(Venta $record) => round($record->importe_total * 1.21, 2)), // Asumiendo IVA 21%
-        ])->columnSpan(1),
-    ]),
-
-
+                                if ($descuentoMensual > 0) {
+                                    return '(-' . number_format($descuentoMensual, 2, ',', '.') . ' €/mes)';
+                                }
+                                return null;
+                            }),
+                    ])->columnSpan(1),
+                    
+                    Grid::make(1)->schema([
+                        TextEntry::make('importe_total_con_iva')
+                            ->label('Total a Facturar (IVA incl.)')->money('EUR')->weight('extrabold')->size('lg')->color('success')
+                            ->state(fn(Venta $record) => round($record->importe_total * 1.21, 2)),
+                    ])->columnSpan(1),
+                ]),
+            
             // --- BLOQUE 3: Desglose de Servicios Vendidos ---
             InfoSection::make('Desglose de Servicios Vendidos')
                 ->schema([
                     RepeatableEntry::make('items')->label(false)->contained(false)
                         ->schema([
                             Grid::make(12)->schema([
-                                TextEntry::make('nombre_final') // <-- CAMBIO CLAVE AQUÍ
+                                TextEntry::make('nombre_final')
                                     ->label(false)
                                     ->columnSpan(5)
                                     ->html()
                                     ->formatStateUsing(function ($state, VentaItem $record): HtmlString {
-                                        // Ahora la variable $state ya contiene el nombre correcto (personalizado o el original)
                                         $nombreServicioHtml = e($state);
-
                                         if ($record->proyecto) {
                                             $url = \App\Filament\Resources\ProyectoResource::getUrl('view', ['record' => $record->proyecto]);
                                             $icon = \Illuminate\Support\Facades\Blade::render("<x-heroicon-s-briefcase class='h-5 w-5 text-primary-600 mr-2' />");
                                             $nombreServicioHtml = "<a href='{$url}' target='_blank' class='text-primary-600 hover:underline font-semibold flex items-center'>{$icon}" . e($state) . "</a>";
                                         }
-
-                                        // El resto de tu lógica para mostrar el precio no necesita cambios
                                         $precioOriginal = number_format($record->precio_unitario, 2, ',', '.');
                                         $textoPVP = "PVP: {$precioOriginal} €";
                                         if ($record->servicio->tipo === \App\Enums\ServicioTipoEnum::RECURRENTE) {
@@ -1080,7 +1068,6 @@ public static function infolist(Infolist $infolist): Infolist
                                             if($periodicidad) $textoPVP .= " ({$periodicidad})";
                                         }
                                         $precioHtml = "<div class='text-xs text-gray-500'>{$textoPVP}</div>";
-
                                         return new HtmlString("<div>{$nombreServicioHtml}{$precioHtml}</div>");
                                     }),
                                 TextEntry::make('estado_del_item')->label(false)->alignEnd()->columnSpan(3)->badge()->placeholder('---')
@@ -1108,7 +1095,29 @@ public static function infolist(Infolist $infolist): Infolist
                                 TextEntry::make('subtotal_aplicado')->label(false)->money('EUR')->weight('bold')->alignEnd()->columnSpan(2),
                             ])
                         ])
+                ]),
+                
+            // --- BLOQUE 4: Detalles de la Corrección (NUEVO) ---
+            InfoSection::make('Detalles de la Corrección')
+                ->heading('Gestión de la Corrección - ¡Atención!') // <-- AÑADE ESTA LÍNEA
+                ->description('Si esta venta tiene una corrección solicitada, aquí encontrarás los detalles y podrás gestionarla. Una corrección de la venta modifica el estado de suscripciones del cliente y las facturas que estvieran emitidas, generaidno rectificativa y nueva factura')
+                ->icon('heroicon-o-exclamation-triangle')
+                //->color('warning')
+                ->visible(fn (Venta $record): bool => !is_null($record->correccion_estado))
+                ->schema([
+                    TextEntry::make('correccion_estado')
+                        ->label('Estado')
+                        ->badge(),
+                    TextEntry::make('solicitanteCorreccion.name')
+                        ->label('Solicitado por'),
+                    TextEntry::make('correccion_solicitada_at')
+                        ->label('Fecha Solicitud')
+                        ->dateTime('d/m/Y H:i'),
+                    TextEntry::make('correccion_motivo')
+                        ->label('Motivo de la Solicitud')
+                        ->columnSpanFull(),
                 ])
+                ->columns(3),
         ]);
 }
 

@@ -192,7 +192,7 @@
         <strong>DATOS DEL CLIENTE</strong><br>
         <strong>Razon Social:</strong> {{ $factura->cliente->razon_social ?? 'Cliente Desconocido' }}<br>
         @if ($factura->cliente->nombre && $factura->cliente->apellidos)
-             <strong>Nombre y Apellidos:</strong> {{ $factura->cliente->nombre }} {{ $factura->cliente->apellidos }}<br>
+             <strong>Nombre y Apellidos cliente:</strong> {{ $factura->cliente->nombre }} {{ $factura->cliente->apellidos }}<br>
         @endif
         @if ($factura->cliente->dni_cif)
             <strong>CIF:</strong> {{ $factura->cliente->dni_cif }}<br>

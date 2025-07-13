@@ -12,6 +12,7 @@ use Filament\Actions;
 use App\Enums\ClienteSuscripcionEstadoEnum;
 use App\Enums\VentaCorreccionEstadoEnum; // <-- Importante añadir este
 use App\Models\Venta;
+use App\Services\CorreccionVentaService;
 
 class EditVenta extends EditRecord
 {
@@ -31,51 +32,47 @@ class EditVenta extends EditRecord
         ];
     }
 
-    //==================================================================
-    // ▼▼▼ MÉTODO NUEVO: Se ejecuta ANTES de guardar los cambios ▼▼▼
-    //==================================================================
-    protected function beforeSave(): void
-    {
-        // Comprobamos si el campo 'correccion_estado' existe en los datos del formulario
-        if (!isset($this->data['correccion_estado'])) {
-            return; // Si no existe, no hacemos nada
-        }
+  
 
-        // Obtenemos el estado de corrección que viene del formulario
-        $nuevoEstado = $this->data['correccion_estado'];
+   protected function afterSave(): void
+{
+    // Obtenemos los datos que se acaban de guardar y los que había antes
+    $datosGuardados = $this->record->getAttributes();
+    $datosOriginales = $this->record->getOriginal();
 
-        // Obtenemos el estado original que tenía la venta antes de cualquier cambio
-        $estadoOriginal = $this->record->getOriginal('correccion_estado');
-
-        // Comprobamos si el estado ha cambiado a 'COMPLETADA'
-        if ($nuevoEstado === VentaCorreccionEstadoEnum::COMPLETADA->value && $estadoOriginal !== VentaCorreccionEstadoEnum::COMPLETADA->value) {
-
-            // Aquí es donde llamaremos a la lógica pesada en el futuro.
-            // Por ahora, solo ponemos una notificación para confirmar que funciona.
-            
-            // Futura llamada: CorreccionVentaService::procesar($this->record);
+    // Comprobamos si se ha marcado la corrección como 'Completada'
+    if (
+        isset($datosGuardados['correccion_estado']) &&
+        $datosGuardados['correccion_estado'] === VentaCorreccionEstadoEnum::COMPLETADA->value &&
+        ($datosOriginales['correccion_estado'] ?? null) !== VentaCorreccionEstadoEnum::COMPLETADA->value
+    ) {
+        // --- INICIA EL PROCESO DE CORRECCIÓN ---
+        try {
+            CorreccionVentaService::procesar($this->record);
 
             Notification::make()
-                ->title('¡Corrección Procesada!')
-                ->body('La lógica de anulación y creación de facturas se ejecutaría aquí.')
+                ->title('¡Corrección Realizada con Éxito!')
+                ->body('Se han anulado las facturas antiguas y generado las nuevas.')
                 ->success()
                 ->send();
+
+        } catch (\Exception $e) {
+            Notification::make()
+                ->title('¡Error al procesar la corrección!')
+                ->body('Error: ' . $e->getMessage())
+                ->danger()
+                ->persistent()
+                ->send();
         }
-    }
-
-    //==================================================================
-    // ▼▼▼ Tu lógica existente: Se ejecuta DESPUÉS de guardar ▼▼▼
-    //==================================================================
-    protected function afterSave(): void
-    {
+    } else {
+        // --- LÓGICA PARA UNA EDICIÓN NORMAL (no una corrección) ---
+        // Aquí se ejecuta tu código original si no es una corrección
         if ($this->record) {
-            // 1. Actualiza el total de la venta
             $this->record->updateTotal();
-
-            // 2. Procesa la facturación de servicios únicos (si se añadió alguno nuevo)
             $this->procesarFacturacionUnicaParaVenta($this->record);
         }
     }
+}
 
     /**
      * Tu método auxiliar existente para facturar servicios únicos.
