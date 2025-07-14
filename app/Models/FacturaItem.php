@@ -13,6 +13,8 @@ class FacturaItem extends Model
     protected $fillable = [
         'factura_id', 'servicio_id', 'descripcion', 'cantidad', 'cliente_suscripcion_id', 'precio_unitario_aplicado', 
         'precio_unitario', 'porcentaje_iva', 'subtotal', 'importe_descuento', 
+        'descuento_tipo',   
+        'descuento_valor',
     ];
 
     protected $casts = [

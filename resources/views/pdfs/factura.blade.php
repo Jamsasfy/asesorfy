@@ -217,22 +217,37 @@
             </tr>
         </thead>
         <tbody>
-            @foreach ($factura->items as $item)
-                <tr>
-                    <td> {{ $item->descripcion }}
-                    </td>
-                    <td class="text-right"> {{ number_format($item->cantidad, 2, ',', '.') }}
-                    </td>
-                    <td class="text-right">
-                        {{ number_format($item->precio_unitario_aplicado, 2, ',', '.') }} €
-                    </td>
-                    <td class="text-right"> {{ number_format($item->importe_descuento, 2, ',', '.') }} €
-                    </td>
-                    <td class="text-right"> {{ number_format($item->subtotal, 2, ',', '.') }} €
-                    </td>
-                </tr>
-            @endforeach
-        </tbody>
+    @foreach ($factura->items as $item)
+        @php
+            $leyendaDescuento = null;
+            if ($item->descuento_tipo && $item->descuento_valor) {
+                $leyendaDescuento = match($item->descuento_tipo) {
+                    'porcentaje' => $item->descuento_valor . ' %',
+                    'fijo' => '-' . number_format($item->descuento_valor, 2, ',', '.') . ' €',
+                    'precio_final' => 'precio final',
+                    default => null
+                };
+            }
+        @endphp
+        <tr>
+            <td>
+                {{ $item->descripcion }}
+            </td>
+            <td class="text-right">
+                {{ number_format($item->cantidad, 2, ',', '.') }}
+            </td>
+            <td class="text-right">
+                {{ number_format($item->precio_unitario, 2, ',', '.') }} €
+            </td>
+            <td class="text-right">
+                {{ $leyendaDescuento ?? '-' }}
+            </td>
+            <td class="text-right">
+                {{ number_format($item->subtotal, 2, ',', '.') }} €
+            </td>
+        </tr>
+    @endforeach
+</tbody>
     </table>
 
     <div class="footer-sections">

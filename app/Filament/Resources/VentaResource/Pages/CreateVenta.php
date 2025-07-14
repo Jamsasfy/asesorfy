@@ -33,51 +33,50 @@ class CreateVenta extends CreateRecord
      * Este método se ejecuta automáticamente DESPUÉS de que la Venta se ha creado en la base de datos.
      */
     protected function afterCreate(): void
-    {
-        // Aseguramos que el registro de la venta se ha creado correctamente
-        if ($this->record) {
+{
+    if ($this->record) {
+        // 1. Crear proyectos y suscripciones desde la venta
+        $this->record->processSaleAfterCreation();
 
-            // 1. (Esta línea ya la tenías y es CLAVE)
-            // Llama al método en el modelo Venta que crea los Proyectos y Suscripciones.
-            $this->record->processSaleAfterCreation(); 
+        // 2. Actualizar el total de la venta (precio, descuentos, etc.)
+        $this->record->updateTotal();
 
-            // 2. Actualiza el importe_total en el modelo Venta.
-            //    Se ejecuta DESPUÉS del paso 1 para asegurar que las suscripciones (con sus subtotales) están creadas.
-            $this->record->updateTotal();
+        // 3. Generar la factura consolidada para servicios únicos
+        $factura = \App\Services\FacturacionService::generarFacturaParaVenta($this->record);
 
-            // --- ¡NUEVA LÓGICA CLAVE AQUÍ! ---
-            // 3. Después de crear las suscripciones y actualizar el total,
-            //    procesamos la facturación de los servicios únicos de esta Venta.
-            $this->procesarFacturacionUnicaParaVenta($this->record);
-            // --- FIN NUEVA LÓGICA CLAVE ---
+        if ($factura && $factura->items()->count() > 0) {
+            Notification::make()
+                ->title("Factura {$factura->numero_factura} generada correctamente")
+                ->success()
+                ->send();
+        }
 
+        // 4. Notificar si se han creado proyectos asociados
+        if ($this->record->proyectos()->exists()) {
+            Notification::make()
+                ->warning()
+                ->title('Proyectos y Suscripciones Creadas')
+                ->body('Se han generado proyectos de activación. Algunas suscripciones pueden estar pendientes hasta que se completen.')
+                ->send();
+        }
 
-            // 4. Muestra una notificación SI esta venta en particular generó proyectos.
-            //    (Esta parte ya la tenías)
-            if ($this->record->proyectos()->exists()) {
-                Notification::make()
-                    ->warning()
-                    ->title('Proyectos y Suscripciones Creadas')
-                    ->body('Se han generado proyectos de activación. Algunas suscripciones pueden estar pendientes hasta que se completen.')
-                    ->send();
-            }
-
-            // 5. Actualiza el estado del Lead asociado a esta venta.
-            //    (Esta parte ya la tenías)
-            if ($this->record->lead_id && $this->record->lead) {
-                $this->record->lead->update([
-                    'estado' => \App\Enums\LeadEstadoEnum::CONVERTIDO,
-                ]);
-            }
+        // 5. Actualizar el estado del lead si hay uno vinculado
+        if ($this->record->lead_id && $this->record->lead) {
+            $this->record->lead->update([
+                'estado' => \App\Enums\LeadEstadoEnum::CONVERTIDO,
+            ]);
         }
     }
+}
+
+
 
     /**
      * Método auxiliar para procesar las suscripciones únicas asociadas a una Venta.
      * Busca las suscripciones de tipo UNICO y ACTIVA y genera una factura PAGADA para cada una.
      * Este método es llamado después de crear o actualizar una Venta.
      */
-    protected function procesarFacturacionUnicaParaVenta($venta): void
+   /*  protected function procesarFacturacionUnicaParaVenta($venta): void
     {
         // Buscamos todas las ClienteSuscripcion que:
         // a) Están vinculadas a esta Venta (usando 'venta_origen_id').
@@ -107,5 +106,5 @@ class CreateVenta extends CreateRecord
                     ->send();
             }
         }
-    }
+    } */
 }

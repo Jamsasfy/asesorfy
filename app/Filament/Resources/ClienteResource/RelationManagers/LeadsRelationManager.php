@@ -73,7 +73,7 @@ class LeadsRelationManager extends RelationManager
                 // Fecha de creación (la he añadido como extra, es útil)
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Creado')
-                    ->dateTime('d/m/Y')
+                    ->dateTime('d/m/Y H:i')
                     ->sortable(),
             ])
             ->filters([

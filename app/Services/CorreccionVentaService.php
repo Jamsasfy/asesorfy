@@ -7,6 +7,7 @@ use App\Models\Factura;
 use App\Models\FacturaItem;
 use App\Models\Venta;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class CorreccionVentaService
 {
@@ -16,6 +17,8 @@ class CorreccionVentaService
      */
     public static function procesar(Venta $venta): void
     {
+         
+
         DB::transaction(function () use ($venta) {
 
             // --- 1. ANULAR Y ABONAR LO ANTIGUO ---

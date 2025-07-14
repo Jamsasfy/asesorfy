@@ -34,25 +34,27 @@ class EditVenta extends EditRecord
 
   
 
-   protected function afterSave(): void
+   // En EditVenta.php
+
+protected function afterSave(): void
 {
-    // Obtenemos los datos que se acaban de guardar y los que había antes
     $datosGuardados = $this->record->getAttributes();
     $datosOriginales = $this->record->getOriginal();
 
-    // Comprobamos si se ha marcado la corrección como 'Completada'
     if (
         isset($datosGuardados['correccion_estado']) &&
         $datosGuardados['correccion_estado'] === VentaCorreccionEstadoEnum::COMPLETADA->value &&
         ($datosOriginales['correccion_estado'] ?? null) !== VentaCorreccionEstadoEnum::COMPLETADA->value
     ) {
-        // --- INICIA EL PROCESO DE CORRECCIÓN ---
         try {
+            // Refrescamos la venta para asegurarnos que los datos y relaciones están actualizados
+            $this->record->refresh();
+
+            // Ejecutamos el proceso completo de corrección (anula, abona, recrea venta y factura consolidada)
             CorreccionVentaService::procesar($this->record);
 
             Notification::make()
                 ->title('¡Corrección Realizada con Éxito!')
-                ->body('Se han anulado las facturas antiguas y generado las nuevas.')
                 ->success()
                 ->send();
 
@@ -65,19 +67,24 @@ class EditVenta extends EditRecord
                 ->send();
         }
     } else {
-        // --- LÓGICA PARA UNA EDICIÓN NORMAL (no una corrección) ---
-        // Aquí se ejecuta tu código original si no es una corrección
         if ($this->record) {
             $this->record->updateTotal();
-            $this->procesarFacturacionUnicaParaVenta($this->record);
+
+            // ✅ Solo una factura consolidada para servicios únicos
+            FacturacionService::generarFacturaParaVenta($this->record);
+
+            Notification::make()
+                ->title("Factura generada para los servicios únicos.")
+                ->success()
+                ->send();
         }
     }
 }
 
-    /**
-     * Tu método auxiliar existente para facturar servicios únicos.
-     */
-    protected function procesarFacturacionUnicaParaVenta($venta): void
+
+
+   
+   /*  protected function procesarFacturacionUnicaParaVenta($venta): void
     {
         $suscripcionesUnicasAFacturar = ClienteSuscripcion::query()
             ->where('venta_origen_id', $venta->id)
@@ -100,5 +107,5 @@ class EditVenta extends EditRecord
                     ->send();
             }
         }
-    }
+    } */
 }
