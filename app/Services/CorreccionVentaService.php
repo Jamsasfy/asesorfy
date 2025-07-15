@@ -62,13 +62,19 @@ class CorreccionVentaService
         ]);
 
         foreach ($facturaOriginal->items as $item) {
-            $facturaRectificativa->items()->create([
-                'descripcion' => $item->descripcion,
-                'cantidad' => $item->cantidad,
-                'precio_unitario' => -$item->precio_unitario,
-                'subtotal' => -$item->subtotal,
-                'porcentaje_iva' => $item->porcentaje_iva,
-            ]);
+           $facturaRectificativa->items()->create([
+    'descripcion' => $item->descripcion . ' (Factura Rectificada ' . $facturaOriginal->numero_factura . ')',
+    'cantidad' => $item->cantidad,
+    'precio_unitario' => -$item->precio_unitario,
+    'precio_unitario_aplicado' => -$item->precio_unitario_aplicado,
+    'importe_descuento' => -$item->importe_descuento,
+    'porcentaje_iva' => $item->porcentaje_iva,
+    'subtotal' => -$item->subtotal,
+    'descuento_tipo' => $item->descuento_tipo,
+    'descuento_valor' => $item->descuento_valor,
+    'cliente_suscripcion_id' => $item->cliente_suscripcion_id,
+    'servicio_id' => $item->servicio_id,
+]);
         }
     }
 }

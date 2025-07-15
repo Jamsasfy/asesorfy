@@ -252,6 +252,7 @@ public static function generarFacturaParaVenta(Venta $venta): ?Factura
         'importe_descuento'        => round($importeDescuento * $cantidad, 2),
         'porcentaje_iva'           => $ivaGeneral,
         'subtotal'                 => $subtotal,
+        'cliente_suscripcion_id' => $item->cliente_suscripcion_id,
         'descuento_tipo'           => $descuentoTipo,
         'descuento_valor'          => $descuentoValor,
     ]);
