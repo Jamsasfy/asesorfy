@@ -97,14 +97,21 @@ class ClienteSuscripcionResource extends Resource implements HasShieldPermission
                 ->where('nombre_personalizado', 'like', "%{$search}%")
                 ->orWhereHas('servicio', fn ($q) => $q->where('nombre', 'like', "%{$search}%"));
         }),
-            Tables\Columns\TextColumn::make('estado')->badge()
-             ->color(fn (ClienteSuscripcionEstadoEnum $state): string => match ($state) {
-        ClienteSuscripcionEstadoEnum::ACTIVA => 'success',
-        ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION => 'warning',
-        ClienteSuscripcionEstadoEnum::CANCELADA => 'danger',
-        // Puedes añadir más casos si tienes otros estados
-        default => 'gray',
-    }),
+            Tables\Columns\TextColumn::make('estado')
+                ->badge()
+                ->color(fn (ClienteSuscripcionEstadoEnum $state): string => match ($state) {
+                    ClienteSuscripcionEstadoEnum::ACTIVA => 'success',
+                    ClienteSuscripcionEstadoEnum::PENDIENTE_ACTIVACION => 'warning',
+                    ClienteSuscripcionEstadoEnum::EN_PRUEBA => 'info',
+                    ClienteSuscripcionEstadoEnum::IMPAGADA => 'danger',
+                    ClienteSuscripcionEstadoEnum::PENDIENTE_CANCELACION => 'warning',
+                    ClienteSuscripcionEstadoEnum::CANCELADA => 'gray',
+                    ClienteSuscripcionEstadoEnum::FINALIZADA => 'gray',
+                    ClienteSuscripcionEstadoEnum::REEMPLAZADA => 'gray',
+                    ClienteSuscripcionEstadoEnum::PAUSADA => 'secondary',
+                    default => 'gray',
+                })
+    ->formatStateUsing(fn(ClienteSuscripcionEstadoEnum $state) => $state->getLabel()),
             Tables\Columns\TextColumn::make('fecha_inicio')->date('d/m/Y'),
             Tables\Columns\TextColumn::make('fecha_fin')->date('d/m/Y'),
             Tables\Columns\TextColumn::make('precio_acordado')->money('EUR'),

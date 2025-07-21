@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany; // Para comentarios morfológicos
 use App\Enums\ProyectoEstadoEnum; // Si defines un Enum para los estados del proyecto
 use Illuminate\Database\Eloquent\Casts\Attribute; // Asegúrate de importar Attribute
-
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 
 class Proyecto extends Model
 {
@@ -84,6 +84,20 @@ class Proyecto extends Model
             get: fn () => $this->llamadas + $this->emails + $this->chats + $this->otros_acciones,
         );
     }
+
+    public function clienteSuscripcion(): HasOneThrough
+{
+    return $this->hasOneThrough(
+        \App\Models\ClienteSuscripcion::class,    // Modelo final
+        \App\Models\VentaItem::class,             // Modelo intermedio
+        'id',                                     // Clave local en VentaItem (intermedia)
+        'id',                                     // Clave local en ClienteSuscripcion
+        'venta_item_id',                          // Foreign key en Proyecto
+        'cliente_suscripcion_id'                  // Foreign key en VentaItem (hacia ClienteSuscripcion)
+    );
+}
+
+
 
     // app/Models/Proyecto.php
 

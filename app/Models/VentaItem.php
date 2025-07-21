@@ -32,6 +32,7 @@ class VentaItem extends Model
         'subtotal_aplicado_con_iva', // <<< NUEVO CAMPO AÑADIDO
         'requiere_proyecto',
         'nombre_personalizado',
+        'cliente_suscripcion_id',
 
 
 

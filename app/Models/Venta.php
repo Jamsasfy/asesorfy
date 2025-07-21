@@ -262,7 +262,7 @@ public function processSaleAfterCreation(): void
         }
 
         if ($estadoInicial) {
-            \App\Models\ClienteSuscripcion::create([
+              $suscripcion = \App\Models\ClienteSuscripcion::create([
                 'cliente_id'             => $this->cliente_id,
                 'servicio_id'            => $item->servicio_id,
                 'venta_origen_id'        => $this->id,
@@ -281,6 +281,9 @@ public function processSaleAfterCreation(): void
                 'descuento_valido_hasta' => $item->descuento_valido_hasta,
                 'observaciones'          => $item->observaciones_item,
             ]);
+            // 👉 Asociamos la suscripción recién creada al item
+                $item->cliente_suscripcion_id = $suscripcion->id;
+                $item->save();
         }
     }
 }

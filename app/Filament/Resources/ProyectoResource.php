@@ -696,6 +696,7 @@ public static function getNavigationLabel(): string
                   TextEntry::make('estado')
                                 ->label(new HtmlString('<span class="font-semibold">Estado Actual</span>'))
                                 ->badge()
+                                ->columnSpan(2)
                                 ->color(fn (\App\Enums\ProyectoEstadoEnum $state): string => match ($state->value) {
                                     \App\Enums\ProyectoEstadoEnum::Pendiente->value   => 'primary',
                                     \App\Enums\ProyectoEstadoEnum::EnProgreso->value  => 'warning',
@@ -703,6 +704,7 @@ public static function getNavigationLabel(): string
                                     \App\Enums\ProyectoEstadoEnum::Cancelado->value   => 'danger',
                                     default => 'gray',
                                 })
+                                 
                                 ->suffixAction(
                                     ActionInfolist::make('cambiar_estado_proyecto')
                                         ->label('') // No label, solo icono
@@ -711,6 +713,14 @@ public static function getNavigationLabel(): string
                                         ->modalHeading('Cambiar Estado del Proyecto')
                                         ->modalSubmitActionLabel('Guardar Estado')
                                         ->modalWidth('md')
+                                         ->tooltip(fn (Proyecto $record): ?string =>
+                                                filled($record->user_id)
+                                                    ? 'Cambiar estado'
+                                                    : 'Cambiar estado'
+                                            )
+                                         ->visible(fn (Proyecto $record): bool =>
+                                                $record->user_id !== null && !$record->estado->isFinal()
+                                            )
                                         ->form([
                                             Select::make('estado') // Usar FormsSelect
                                                 ->label('Nuevo Estado')
@@ -749,7 +759,12 @@ public static function getNavigationLabel(): string
 
                                             Notification::make()->title('Estado del proyecto actualizado')->success()->send();
                                         })
-                                ),
+                                )
+                                 ->helperText(fn (Proyecto $record) =>
+                            $record->user_id === null
+                                ? '❗ Asigna un comercial antes de poder cambiar el estado.'
+                                : null
+                                 ),
 
                    InfoSection::make('Proyectos o servicios dependientes de la misma venta') // <-- El título que querías
                    ->description('Aquí se listan otros proyectos o servicios de la misma venta que requieren atención. Importante comunicar con el asesor asignado en otros proyectos para establecer el orden de las presentaciones en la administarción') // <-- ESTE ES EL SUBTÍTULO

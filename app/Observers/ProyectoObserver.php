@@ -40,8 +40,23 @@ class ProyectoObserver
         if ($proyecto->venta) {
             // Escenario A: El proyecto se ha FINALIZADO
             if ($proyecto->wasChanged('estado') && $proyecto->estado === ProyectoEstadoEnum::Finalizado) {
-                // Esta función ya comprueba si quedan otros proyectos antes de activar.
+                // a1. Esta función ya comprueba si quedan otros proyectos antes de activar.
                 $proyecto->venta->checkAndActivateSubscriptions();
+
+                 // A.2 Finalizamos suscripción única si aplica
+                    $suscripcion = $proyecto->clienteSuscripcion;
+
+                    if (
+                        $suscripcion &&
+                        !$suscripcion->es_recurrente &&
+                        $suscripcion->estado === ClienteSuscripcionEstadoEnum::ACTIVA
+                    ) {
+                        $suscripcion->update([
+                            'estado' => ClienteSuscripcionEstadoEnum::FINALIZADA,
+                        ]);
+                    }
+
+
             }
 
             // Escenario B: El proyecto se ha CANCELADO

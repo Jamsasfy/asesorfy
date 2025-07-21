@@ -387,6 +387,8 @@ public static function infolist(Infolist $infolist): Infolist
                         }),
 
                         TextEntry::make('estado')
+                            //->inlineLabel()
+
                         ->label(new HtmlString('<span class="text-xl font-semibold">Estado Actual</span>'))
                         ->badge()
                         ->color(fn (?LeadEstadoEnum $state): string => match ($state) { // Usa $state que es Enum
@@ -407,18 +409,21 @@ public static function infolist(Infolist $infolist): Infolist
                                 ->label('') // Solo icono
                                 ->icon('heroicon-m-arrow-path')
                                 ->color('primary')
-                                ->tooltip(fn (Lead $record): string =>
-                                        is_null($record->cliente_id)
-                                            ? 'Cambiar estado'
-                                            : 'Imposible: ya dispone de cliente y venta'
-                                    )
+                               // ->iconButton() // <- necesario para mostrar el tooltip
+                               // ->extraAttributes(['class' => 'ml-2'])
+                               ->tooltip(fn (Lead $record): ?string =>
+                                filled($record->asignado_id)
+                                    ? 'Cambiar estado'
+                                    : null
+                            )
+                                ->visible(fn (Lead $record): bool =>
+                                    $record->asignado_id !== null && !$record->estado->isFinal()
+                                )
                                 ->modalHeading(fn(?Lead $record): string => "Cambiar Estado de " . ($record?->nombre ?? 'este lead'))
                                 ->modalSubmitActionLabel('Guardar Estado')
                                 ->modalWidth('xl') // O el ancho que prefieras
                                                     // Solo muéstralo si NO hay cliente asignado aun
-                                ->visible(fn (Lead $record): bool =>
-                                    ! $record->estado->isFinal()
-                                )
+                               
                                 ->form([ // Formulario del modal CORREGIDO
                                     Select::make('estado')
                                         ->label('Nuevo estado')
@@ -547,7 +552,12 @@ public static function infolist(Infolist $infolist): Infolist
 
                                     Notification::make()->title('Estado actualizado')->success()->send();
                                 }) // Fin ->action()
-                        ), // Fin ->suffixAction()
+                        )
+                       ->helperText(fn (Lead $record) =>
+                            $record->asignado_id === null
+                                ? '❗ Asigna un comercial antes de poder cambiar el estado.'
+                                : null
+                        ),
 
                         TextEntry::make('venta_asociada')
                         ->label(new HtmlString('<span class="text-xl font-semibold">Venta Asociada</span>'))

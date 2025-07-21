@@ -23,34 +23,24 @@ class FacturaPdfController extends Controller
             $factura->load(['cliente', 'items.servicio']);
 
             // --- CÁLCULO DEL DESGLOSE DEL IVA ---
-            $ivaBreakdown = [];
-            foreach ($factura->items as $item) {
-                // Aseguramos que porcentaje_iva y subtotal son floats antes de usarlos.
-                $itemPorcentajeIva = (float) $item->porcentaje_iva;
-                $itemSubtotal = (float) $item->subtotal;
+           $ivaBreakdown = [];
 
-                // Si el subtotal de la línea es cero o insignificante, o la tasa de IVA es cero,
-                // no la incluimos en el desglose para evitar entradas inútiles.
-                if ($itemSubtotal <= 0 || $itemPorcentajeIva <= 0) {
-                    continue;
-                }
+foreach ($factura->items as $item) {
+    $itemPorcentajeIva = (float) $item->porcentaje_iva;
+    $itemSubtotal = (float) $item->subtotal;
 
-                $ivaRate = number_format($itemPorcentajeIva, 2, '.', ''); // Formatea la tasa de IVA (ej. 21.00)
-                $itemIvaAmount = $itemSubtotal * ($itemPorcentajeIva / 100); 
+    $ivaRate = number_format($itemPorcentajeIva, 2, '.', ''); // clave del desglose
+    $itemIvaAmount = $itemSubtotal * ($itemPorcentajeIva / 100);
 
-                // Si el monto de IVA calculado para el ítem es cero o insignificante después de redondear,
-                // tampoco lo incluimos.
-                if (round($itemIvaAmount, 2) <= 0.00) {
-                    continue;
-                }
+    if (!isset($ivaBreakdown[$ivaRate])) {
+        $ivaBreakdown[$ivaRate] = 0;
+    }
 
-                // Acumula el monto de IVA por cada tasa
-                if (!isset($ivaBreakdown[$ivaRate])) {
-                    $ivaBreakdown[$ivaRate] = 0;
-                }
-                $ivaBreakdown[$ivaRate] += $itemIvaAmount;
-            }
-            ksort($ivaBreakdown); // Ordena el desglose por tasa de IVA
+    $ivaBreakdown[$ivaRate] += $itemIvaAmount;
+}
+
+ksort($ivaBreakdown);
+
             // --- FIN CÁLCULO DEL DESGLOSE DEL IVA ---
 
             // --- ¡BLOQUE DE DEPURACIÓN CRUCIAL! (Comentado, pero puedes descomentarlo si lo necesitas) ---

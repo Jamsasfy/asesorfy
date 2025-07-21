@@ -85,6 +85,7 @@ class LeadsRelationManager extends RelationManager
             ->actions([
                 // Botón para ver el Lead en una nueva pestaña
                 Tables\Actions\ViewAction::make()
+                ->label('Ver como esta el Leads')
                     ->url(fn (Lead $record): string => LeadResource::getUrl('view', ['record' => $record]))
                     ->openUrlInNewTab(),
             ])

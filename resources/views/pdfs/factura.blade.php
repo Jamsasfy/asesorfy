@@ -212,7 +212,7 @@
                 <th class="col-desc">Descripción</th>
                 <th class="col-qty text-right">Cantidad</th>
                 <th class="col-price text-right">Precio Unit.</th>
-                <th class="col-discount text-right">Descuento</th>
+                <th class="col-discount text-right">Dto</th>
                 <th class="col-subtotal text-right">Subtotal</th>
             </tr>
         </thead>
