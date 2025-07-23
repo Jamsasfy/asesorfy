@@ -1,0 +1,4 @@
+/* Reduce la opacidad del fondo oscuro del slide-over */
+.filament [data-overlay] {
+    background-color: rgba(0, 0, 0, 0.05) !important;
+}

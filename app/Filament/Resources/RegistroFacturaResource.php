@@ -6,9 +6,13 @@ use App\Enums\EstadoRegistroFactura;
 use App\Enums\TipoRegistroFactura;
 use App\Filament\Resources\RegistroFacturaResource\Pages;
 use App\Filament\Resources\RegistroFacturaResource\RelationManagers;
+use App\Models\Cliente;
+use App\Models\Proveedor;
 use App\Models\RegistroFactura;
 use App\Models\Tercero;
 use Filament\Forms;
+use Filament\Forms\Components\Actions\Action;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Group;
 use Filament\Forms\Components\Placeholder;
@@ -18,11 +22,18 @@ use Filament\Tables;
 use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Table;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\View;
 use Illuminate\Support\Facades\Storage;
-
-
-
+use Illuminate\Support\HtmlString;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile; // <-- MUY IMPORTANTE AÑADIR ESTE
+use Filament\Forms\Get;
+use Filament\Support\Enums\Alignment;
+use Filament\Forms\Components\Actions;
+use Filament\Notifications\Notification;
 
 
 class RegistroFacturaResource extends Resource
@@ -31,72 +42,150 @@ class RegistroFacturaResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
 
-   public static function form(Form $form): Form
+
+
+
+public static function form(Form $form): Form
 {
     return $form
         ->schema([
-            // SECCIÓN 1: TIPO DE REGISTRO (Siempre visible)
-            Section::make()
-                ->schema([
-                    Forms\Components\Radio::make('tipo')
-                        ->label('Tipo de Registro')
-                        ->options([
-                            'emitida' => 'Emitida (Ingreso)',
-                            'recibida' => 'Recibida (Gasto)',
-                        ])
-                        ->required()
-                        ->live()
-                        // La clave: En 'Crear', por defecto es 'recibida' y no se puede cambiar.
-                        ->default('recibida')
-                        ->disabled(fn ($livewire): bool => $livewire instanceof Pages\CreateRegistroFactura),
-                ]),
+            Grid::make(5)->schema([
 
-            // SECCIÓN 2: FORMULARIO PARA FACTURAS RECIBIDAS
-            Section::make('Detalle de Factura Recibida (Gasto)')
-                ->visible(fn (Forms\Get $get): bool => $get('tipo') === 'recibida')
-                ->schema([
-                    Grid::make(3)->schema([
-                        // --- COLUMNA IZQUIERDA: VISOR DEL JUSTIFICANTE ---
-                        Group::make()
-                            ->columnSpan(1)
+                // COLUMNA IZQUIERDA – VISOR
+                Group::make()
+                    ->columnSpan(3)
+                    ->schema([
+                        Section::make('Visor del Justificante Factura de Gasto')
                             ->schema([
-                                FileUpload::make('justificante_path')
-                                    ->label('Subir justificante')
-                                    ->disk('public')
-                                    ->directory('justificantes_facturas')
-                                    ->required()
-                                    ->visibleOn('create'),
-                                
-                                Placeholder::make('visor_justificante')
-                                    ->label('Justificante Adjunto')
-                                    ->content(function ($record): ?string {
-                                        if ($record && $record->justificante_path && Storage::disk('public')->exists($record->justificante_path)) {
-                                            $url = Storage::url($record->justificante_path);
-                                            return '<a href="' . $url . '" target="_blank" rel="noopener noreferrer"><img src="' . $url . '" alt="Justificante" style="max-height: 200px; border-radius: 5px;"></a>';
+                                Placeholder::make('visor_final')
+                                    ->hiddenLabel()
+                                    ->reactive()
+                                    ->content(function ($get): HtmlString {
+                                        $url = $get('vista_previa_url');
+                                        if (!$url) {
+                                            return new HtmlString('<div style="text-align: center; padding: 2rem; border: 1px dashed #666;">Selecciona un archivo para previsualizarlo aquí.</div>');
                                         }
-                                        return 'No hay justificante adjunto.';
-                                    })
-                                    ->visibleOn('edit'),
-                            ]),
 
-                        // --- COLUMNA DERECHA: FORMULARIO DE DATOS ---
-                        Group::make()
-                            ->columnSpan(2)
-                            ->schema([
-                                // Aquí dentro irán todos los campos de datos:
-                                // Sección del Tercero, Sección de Fechas, Sección de Totales, etc.
+                                        $ext = pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION);
+
+                                        return match (true) {
+                                            in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp']) => new HtmlString("<img src='{$url}' style='width: 100%; border-radius: 5px;'>"),
+                                            $ext === 'pdf' => new HtmlString("<iframe src='{$url}' style='width: 100%; height: 75vh; border: 1px solid #444; border-radius: 5px;'></iframe>"),
+                                            default => new HtmlString("<div style='padding: 2rem; text-align: center; border: 1px dashed #666;'><a href='{$url}' target='_blank'>Ver documento</a></div>"),
+                                        };
+                                    }),
                             ]),
                     ]),
-                ]),
 
-            // SECCIÓN 3: FORMULARIO PARA FACTURAS EMITIDAS (Solo visible en 'Edit')
-            Section::make('Detalle de Factura Emitida (Ingreso)')
-                ->visible(fn (Forms\Get $get): bool => $get('tipo') === 'emitida')
-                ->schema([
-                    // Aquí dentro irá nuestro Repeater para las líneas de factura
-                ]),
+                // COLUMNA DERECHA – FORMULARIO
+                Group::make()
+                    ->columnSpan(2)
+                    ->schema([
+                        Section::make('Subir y Registrar Datos de Factura')
+                            ->schema([
+                                Hidden::make('tipo')->default('recibida'),
+                                Hidden::make('vista_previa_url')->reactive(),
+
+                                FileUpload::make('justificante_path')
+                                    ->label('Seleccionar Factura de Gasto')
+                                    ->disk('public')
+                                    ->directory('justificantes_facturas_temp')
+                                    ->required()
+                                    ->live()
+                                    ->reactive()
+                                    ->afterStateUpdated(function ($state, $set) {
+                                        if ($state) {
+                                            $path = $state->store('justificantes_facturas_temp', 'public');
+                                            $set('vista_previa_url', asset('storage/' . $path));
+                                        }
+                                    }),
+
+                                // CLIENTE
+                                Select::make('cliente_id')
+                                    ->label('Cliente AsesorFy')
+                                    ->options(fn () => \App\Models\Cliente::all()->pluck('razon_social', 'id'))
+                                    ->searchable()
+                                    ->live()
+                                    ->required(),
+
+                                // PROVEEDOR (se muestra solo si hay cliente)
+                                Select::make('proveedor_id')
+                                    ->label('Proveedor')
+                                    ->options(function ($get) {
+                                        $clienteId = $get('cliente_id');
+                                        return $clienteId
+                                            ? \App\Models\Proveedor::where('cliente_id', $clienteId)->orderBy('nombre')->pluck('nombre', 'id')->prepend('➕ Crear nuevo proveedor', '__nuevo__')
+                                            : [];
+                                    })
+                                    ->searchable()
+                                    ->live()
+                                    ->required()
+                                    ->visible(fn ($get) => filled($get('cliente_id')))
+                                    ->hint('Selecciona un proveedor o crea uno nuevo.'),
+
+                                // BLOQUE NUEVO PROVEEDOR
+                                Section::make('Nuevo proveedor')
+                                    ->description('Introduce los datos del proveedor y guárdalo para continuar con la factura de gasto. Ya podrás usarlo en futuras facturas de gasto sin tener que volver a introducirlo.')
+                                    ->aside()
+                                    ->schema([
+                                        TextInput::make('proveedor_nuevo_nombre')->label('Nombre o Razón Social')->required(),
+                                        TextInput::make('proveedor_nuevo_nif')->label('NIF / CIF')->required(),
+                                        TextInput::make('proveedor_nuevo_email')->label('Email')->email(),
+                                        TextInput::make('proveedor_nuevo_telefono')->label('Teléfono'),
+                                        TextInput::make('proveedor_nuevo_direccion')->label('Dirección'),
+                                        TextInput::make('proveedor_nuevo_cp')->label('CP'),
+                                        TextInput::make('proveedor_nuevo_ciudad')->label('Ciudad'),
+                                        TextInput::make('proveedor_nuevo_provincia')->label('Provincia'),
+                                        TextInput::make('proveedor_nuevo_pais')->label('País'),
+                                        Hidden::make('nuevo_proveedor_guardado')->default(false),
+
+                                        Actions::make([
+                                            Action::make('guardarProveedorNuevo')
+                                                ->label('Crear y Seleccionar Proveedor')
+                                                ->button()
+                                                ->color('success')
+                                                ->action(function ($set, $get) {
+                                                    $proveedor = \App\Models\Proveedor::create([
+                                                        'cliente_id' => $get('cliente_id'),
+                                                        'nombre' => $get('proveedor_nuevo_nombre'),
+                                                        'nif' => $get('proveedor_nuevo_nif'),
+                                                        'email' => $get('proveedor_nuevo_email'),
+                                                        'telefono' => $get('proveedor_nuevo_telefono'),
+                                                        'direccion' => $get('proveedor_nuevo_direccion'),
+                                                        'codigo_postal' => $get('proveedor_nuevo_cp'),
+                                                        'ciudad' => $get('proveedor_nuevo_ciudad'),
+                                                        'provincia' => $get('proveedor_nuevo_provincia'),
+                                                        'pais' => $get('proveedor_nuevo_pais'),
+                                                    ]);
+
+                                                    $set('proveedor_id', $proveedor->id);
+                                                    $set('nuevo_proveedor_guardado', true);
+
+                                                    Notification::make()
+                                                        ->title('Proveedor creado correctamente')
+                                                        ->success()
+                                                        ->send();
+                                                }),
+                                        ])->alignment('right'),
+                                    ])
+                                    ->visible(fn ($get) => $get('proveedor_id') === '__nuevo__'),
+
+                                // CAMPOS FACTURA
+                                Group::make([
+                                    TextInput::make('numero_factura')->label('Nº Factura')->required(),
+                                    DatePicker::make('fecha_expedicion')->label('Fecha de Expedición')->required(),
+                                    TextInput::make('base_imponible')->label('Base Imponible')->numeric()->prefix('€')->required(),
+                                    TextInput::make('cuota_iva')->label('Cuota IVA')->numeric()->prefix('€')->required(),
+                                    TextInput::make('total_factura')->label('Total Factura')->numeric()->prefix('€')->required(),
+                                ])
+                                ->visible(fn ($get) => filled($get('proveedor_id')) && $get('proveedor_id') !== '__nuevo__'),
+                            ]),
+                    ]),
+            ]),
         ]);
 }
+
+
 
     public static function table(Table $table): Table
     {

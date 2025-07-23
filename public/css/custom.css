@@ -17,3 +17,8 @@
   /* Usamos la nueva animación */
   animation: pulse-grow 1.8s ease-in-out infinite; 
 }
+
+/* Menos opacidad al fondo oscuro del modal (SlideOver) */
+.filament .fi-modal-overlay[data-overlay] {
+    background-color: rgba(0, 0, 0, 0.05) !important;
+}
