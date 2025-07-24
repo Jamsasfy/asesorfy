@@ -17,17 +17,19 @@ class DatabaseSeeder extends Seeder
 
          // 1. Llama primero a los seeders de datos base/lookup
          $this->call([
-            ProcedenciaSeeder::class,
+           // ProcedenciaSeeder::class,
+                \Database\Seeders\CuentaCatalogoSeeder::class,
+
             // Aquí podrías añadir otros seeders si los tienes (ej: ServicioSeeder, MotivoDescarteSeeder...)
         ]);
 
         
         // User::factory(10)->create();
-        User::create([
+       /*  User::create([
             'name'     => 'Admin',
             'email'    => 'admin@admin.com',
             'password' => Hash::make('75775990'),
         
-        ]);
+        ]); */
     }
 }
