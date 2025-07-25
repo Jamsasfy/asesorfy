@@ -63,7 +63,8 @@ class CuentaCatalogoSeeder extends Seeder
             ['codigo' => '662300000000', 'descripcion' => 'Intereses de deudas con entidades de crédito'],
             ['codigo' => '678000000000', 'descripcion' => 'Gastos excepcionales'],
             ['codigo' => '678100000000', 'descripcion' => 'Gastos no deducibles'],
-
+            // ... otras cuentas ...
+            ['codigo' => '400000000000', 'descripcion' => 'Proveedores (euros)'],
             // --- INGRESOS ---
             ['codigo' => '560000000000', 'descripcion' => 'Fianzas recibidas a corto plazo'],
             ['codigo' => '700000000000', 'descripcion' => 'Ventas de mercaderías'],

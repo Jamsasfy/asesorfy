@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Log;
+
 
 class CuentaCliente extends Model
 {
@@ -28,28 +30,60 @@ class CuentaCliente extends Model
         return $this->belongsTo(CuentaCatalogo::class);
     }
 
-    public static function generarSiguienteCodigo(string $codigoBase, int $clienteId): string
+/* public static function generarSiguienteCodigo(string $codigoBase, int $clienteId): string
 {
-    // Buscar todas las cuentas de ese cliente que empiecen con ese prefijo
+    // 1. Buscar todas las cuentas del cliente con ese prefijo base
     $subcuentas = self::where('cliente_id', $clienteId)
         ->where('codigo', 'like', $codigoBase . '%')
         ->pluck('codigo');
 
-    // Obtener los sufijos numéricos actuales
+    // 2. Obtener sufijos numéricos de 8 cifras (como enteros)
     $sufijos = $subcuentas
-        ->map(fn($codigo) => intval(substr($codigo, strlen($codigoBase))))
-        ->filter() // elimina nulls
+        ->map(fn($codigo) => intval(substr($codigo, strlen($codigoBase), 8)))
+        ->filter(fn($val) => $val > 0) // solo positivos, elimina null/0
         ->sort()
         ->values();
 
-    // Calcular siguiente sufijo disponible
+    // 3. Calcular el siguiente sufijo: si no hay, es el 1; si hay, el máximo + 1
     $siguiente = $sufijos->isEmpty() ? 1 : $sufijos->max() + 1;
 
-    // Formatear con ceros a la izquierda (hasta 3 cifras, ej. 004)
-    $sufijoFormateado = str_pad($siguiente, 3, '0', STR_PAD_LEFT);
+    // 4. Formatear con ceros a la izquierda (8 cifras)
+    $sufijoFormateado = str_pad($siguiente, 8, '0', STR_PAD_LEFT);
 
+    // 5. Unir base + sufijo
     return $codigoBase . $sufijoFormateado;
+} */
+
+public static function generarSiguienteCodigoCombinado(string $codigoBaseCompleto, int $clienteId): string
+{
+    $codigoPrefijo = substr($codigoBaseCompleto, 0, 4);
+
+    $catalogoSubcuentas = CuentaCatalogo::where('codigo', 'like', $codigoPrefijo . '%')->pluck('codigo');
+
+    $clienteSubcuentas = self::where('cliente_id', $clienteId)
+        ->where('codigo', 'like', $codigoPrefijo . '%')
+        ->pluck('codigo');
+
+    $todosCodigos = $catalogoSubcuentas->merge($clienteSubcuentas);
+
+    $sufijos = $todosCodigos
+        ->map(fn($codigo) => intval(substr($codigo, strlen($codigoPrefijo), 8)))
+        ->filter(fn($val) => $val > 0)
+        ->sort()
+        ->values();
+
+    $siguiente = $sufijos->isEmpty() ? 1 : $sufijos->max() + 1;
+
+    $sufijoFormateado = str_pad($siguiente, 8, '0', STR_PAD_LEFT);
+
+    return $codigoPrefijo . $sufijoFormateado;
 }
+
+
+
+
+
+
 
 
 }

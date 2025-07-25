@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
          $this->call([
            // ProcedenciaSeeder::class,
                 \Database\Seeders\CuentaCatalogoSeeder::class,
+                \Database\Seeders\ProductoServicioBaseSeeder::class,
 
             // Aquí podrías añadir otros seeders si los tienes (ej: ServicioSeeder, MotivoDescarteSeeder...)
         ]);
