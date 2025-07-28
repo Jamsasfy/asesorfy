@@ -2,7 +2,12 @@
 
 namespace App\Enums;
 
-enum TipoOperacionProveedor: string
+use Filament\Support\Contracts\HasLabel; // <-- 1. AÑADIR ESTA LÍNEA
+
+
+
+
+enum TipoOperacionProveedor: string implements HasLabel
 {
     case INTERIOR_DEDUCIBLE = 'interior_deducible';
     case INTRACOMUNITARIA_BIENES = 'intracomunitaria_bienes';
@@ -12,7 +17,7 @@ enum TipoOperacionProveedor: string
     case INVERSION_SUJETO_PASIVO = 'inversion_sujeto_pasivo';
     case IVA_NO_DEDUCIBLE = 'iva_no_deducible';
 
-    public function label(): string
+     public function getLabel(): string
     {
         return match ($this) {
             self::INTERIOR_DEDUCIBLE => '1 Operaciones interiores IVA deducible',

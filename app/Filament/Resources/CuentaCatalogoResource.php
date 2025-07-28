@@ -2,11 +2,17 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\TipoCuentaContable;
 use App\Filament\Resources\CuentaCatalogoResource\Pages;
 use App\Models\CuentaCatalogo;
 use Filament\Forms;
 use Filament\Resources\Resource;
 use Filament\Tables;
+use Filament\Tables\Enums\FiltersLayout;
+use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
+
+
 
 class CuentaCatalogoResource extends Resource
 {
@@ -77,7 +83,22 @@ class CuentaCatalogoResource extends Resource
                 ->label('Activa')
                 ->boolean(),
         ])
+        ->filters([
+            SelectFilter::make('tipo')
+                ->label('Filtrar por tipo')
+                ->options(
+                    collect(TipoCuentaContable::cases())
+                        ->mapWithKeys(fn($tipo) => [$tipo->value => $tipo->label()])
+                        ->toArray()
+                )
+                ->multiple(),
+                  Filter::make('es_activa')
+    ->label('Sólo activos')
+    ->query(fn ($query) => $query->where('es_activa', true))
+    ->toggle(),
+        ], layout: FiltersLayout::AboveContent)
         ->defaultSort('codigo');
+       
     }
 
     public static function getPages(): array

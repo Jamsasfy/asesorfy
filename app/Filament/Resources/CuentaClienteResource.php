@@ -7,12 +7,20 @@ use App\Filament\Resources\CuentaClienteResource\Pages;
 use App\Models\CuentaCliente;
 use App\Models\Cliente;
 use App\Models\CuentaCatalogo;
+
+use Filament\Actions\EditAction;
 use Filament\Forms;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
 use Filament\Tables;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Actions\DeleteAction;
+use Filament\Tables\Enums\FiltersLayout;
+use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
 
 class CuentaClienteResource extends Resource
 {
@@ -73,22 +81,35 @@ public static function form(Forms\Form $form): Forms\Form
             }
         }
     }),
-
             TextInput::make('codigo_prefijo')
                 ->label('Prefijo')
                 ->disabled()
+                ->dehydrated()
+                ->afterStateHydrated(function ($state, $set, $record) {
+                    $set('codigo_prefijo', $record?->codigoPrefijo);
+                })
                 ->reactive(),
 
             TextInput::make('codigo_sufijo')
                 ->label('Sufijo')
-                ->disabled()      // No editable
+                ->disabled()
+                ->dehydrated()
+                ->afterStateHydrated(function ($state, $set, $record) {
+                    $set('codigo_sufijo', $record?->codigoSufijo);
+                })
                 ->reactive(),
 
             TextInput::make('descripcion')
                 ->label('Descripción')
                 ->required(),
+            Toggle::make('es_activa')
+                ->label('Cuenta activa')
+                ->default(true) // opcional: valor por defecto
+                ->required(),    
         ]);
 }
+
+
 
     public static function table(Tables\Table $table): Tables\Table
     {
@@ -97,9 +118,48 @@ public static function form(Forms\Form $form): Forms\Form
                 Tables\Columns\TextColumn::make('cliente.razon_social')->label('Cliente'),
                 Tables\Columns\TextColumn::make('codigo')->label('Código')->sortable(),
                 Tables\Columns\TextColumn::make('descripcion')->label('Descripción')->sortable()->searchable(),
-                Tables\Columns\TextColumn::make('cuentaCatalogo.codigo')->label('Cuenta base'),
+                TextColumn::make('cuentaCatalogo') // accedemos al modelo relacionado
+                ->label('Cuenta base')
+                ->formatStateUsing(function ($state, $record) {
+                    $codigo = $record->cuentaCatalogo?->codigo ? substr($record->cuentaCatalogo->codigo, 0, 4) : '';
+                    $descripcion = $record->cuentaCatalogo?->descripcion ?? '';
+                    return "{$codigo} - {$descripcion}";
+                })
+                ->sortable()
+                ->searchable(),
                 Tables\Columns\IconColumn::make('es_activa')->label('Activa')->boolean(),
+                 
             ])
+             ->actions([
+           Tables\Actions\EditAction::make(),
+            DeleteAction::make()
+        ])
+         ->filters([
+            // Filtro por Cliente (select)
+            SelectFilter::make('cliente_id')
+                ->label('Cliente')
+                ->options(Cliente::pluck('razon_social', 'id')->toArray())
+                ->searchable(),
+
+            // Filtro por Prefijo (text input)
+            Filter::make('codigo_prefijo')
+                ->label('Prefijo')
+                ->form([
+                    Forms\Components\TextInput::make('codigo_prefijo')->placeholder('Ejemplo: 6280'),
+                ])
+                ->query(function ($query, array $data) {
+                    if (!empty($data['codigo_prefijo'])) {
+                        $query->where('codigo', 'like', $data['codigo_prefijo'] . '%');
+                    }
+                }),
+
+           
+            // Filtro toggle para Activa
+            Filter::make('es_activa')
+                ->label('Sólo activas')
+                ->query(fn ($query) => $query->where('es_activa', true))
+                ->toggle(),
+        ], layout: FiltersLayout::AboveContent)
             ->defaultSort('codigo');
     }
 

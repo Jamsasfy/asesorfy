@@ -30,6 +30,18 @@ class CuentaCliente extends Model
         return $this->belongsTo(CuentaCatalogo::class);
     }
 
+    public function getCodigoPrefijoAttribute(): ?string
+{
+    return substr($this->codigo, 0, 4);
+}
+
+public function getCodigoSufijoAttribute(): ?string
+{
+    return substr($this->codigo, 4);
+}
+
+
+
 /* public static function generarSiguienteCodigo(string $codigoBase, int $clienteId): string
 {
     // 1. Buscar todas las cuentas del cliente con ese prefijo base
