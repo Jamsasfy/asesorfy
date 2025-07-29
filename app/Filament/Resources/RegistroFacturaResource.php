@@ -11,10 +11,14 @@ use App\Filament\Resources\RegistroFacturaResource\RelationManagers;
 use App\Models\Cliente;
 use App\Models\CuentaCatalogo;
 use App\Models\CuentaCliente;
+use App\Models\ProductoServicioBase;
+use App\Models\ProductoServicioCliente;
 use App\Models\Proveedor;
 use App\Models\RegistroFactura;
+use App\Models\RetencionIrpf;
 use App\Models\SerieFacturaProveedor;
 use App\Models\Tercero;
+use App\Models\TipoIva;
 use Filament\Forms;
 use Filament\Forms\Components\Actions\Action;
 use Filament\Forms\Components\DatePicker;
@@ -37,12 +41,15 @@ use Illuminate\Support\HtmlString;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile; // <-- MUY IMPORTANTE AÑADIR ESTE
 use Filament\Forms\Get;
 use Filament\Forms\Set;
+use Illuminate\Support\Facades\Log;
+
 
 use Filament\Support\Enums\Alignment;
 use Filament\Forms\Components\Actions;
 use Filament\Forms\Components\Checkbox;
+use Filament\Forms\Components\Repeater;
 use Filament\Notifications\Notification;
-
+use Illuminate\Http\UploadedFile;
 
 class RegistroFacturaResource extends Resource
 {
@@ -50,177 +57,59 @@ class RegistroFacturaResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
 
-
-
-
-/* public static function form(Form $form): Form
-{
-    return $form
-        ->schema([
-            Grid::make(5)->schema([
-
-                // COLUMNA IZQUIERDA – VISOR
-                Group::make()
-                    ->columnSpan(3)
-                    ->schema([
-                        Section::make('Visor del Justificante Factura de Gasto')
-                            ->schema([
-                                Placeholder::make('visor_final')
-                                    ->hiddenLabel()
-                                    ->reactive()
-                                    ->content(function ($get): HtmlString {
-                                        $url = $get('vista_previa_url');
-                                        if (!$url) {
-                                            return new HtmlString('<div style="text-align: center; padding: 2rem; border: 1px dashed #666;">Selecciona un archivo para previsualizarlo aquí.</div>');
-                                        }
-
-                                        $ext = pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION);
-
-                                        return match (true) {
-                                            in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp']) => new HtmlString("<img src='{$url}' style='width: 100%; border-radius: 5px;'>"),
-                                            $ext === 'pdf' => new HtmlString("<iframe src='{$url}' style='width: 100%; height: 75vh; border: 1px solid #444; border-radius: 5px;'></iframe>"),
-                                            default => new HtmlString("<div style='padding: 2rem; text-align: center; border: 1px dashed #666;'><a href='{$url}' target='_blank'>Ver documento</a></div>"),
-                                        };
-                                    }),
-                            ]),
-                    ]),
-
-                // COLUMNA DERECHA – FORMULARIO
-                Group::make()
-                    ->columnSpan(2)
-                    ->schema([
-                        Section::make('Subir y Registrar Datos de Factura')
-                            ->schema([
-                                Hidden::make('tipo')->default('recibida'),
-                                Hidden::make('vista_previa_url')->reactive(),
-
-                                FileUpload::make('justificante_path')
-                                    ->label('Seleccionar Factura de Gasto')
-                                    ->disk('public')
-                                    ->directory('justificantes_facturas_temp')
-                                    ->required()
-                                    ->live()
-                                    ->reactive()
-                                    ->afterStateUpdated(function ($state, $set) {
-                                        if ($state) {
-                                            $path = $state->store('justificantes_facturas_temp', 'public');
-                                            $set('vista_previa_url', asset('storage/' . $path));
-                                        }
-                                    }),
-
-                                // CLIENTE
-                                Select::make('cliente_id')
-                                    ->label('Cliente AsesorFy')
-                                    ->options(fn () => \App\Models\Cliente::all()->pluck('razon_social', 'id'))
-                                    ->searchable()
-                                    ->live()
-                                    ->required(),
-
-                                // PROVEEDOR (se muestra solo si hay cliente)
-                                Select::make('proveedor_id')
-                                    ->label('Proveedor')
-                                    ->options(function ($get) {
-                                        $clienteId = $get('cliente_id');
-                                        return $clienteId
-                                            ? \App\Models\Proveedor::where('cliente_id', $clienteId)->orderBy('nombre')->pluck('nombre', 'id')->prepend('➕ Crear nuevo proveedor', '__nuevo__')
-                                            : [];
-                                    })
-                                    ->searchable()
-                                    ->live()
-                                    ->required()
-                                    ->visible(fn ($get) => filled($get('cliente_id')))
-                                    ->hint('Selecciona un proveedor o crea uno nuevo.'),
-
-                                // BLOQUE NUEVO PROVEEDOR
-                                Section::make('Nuevo proveedor')
-                                    ->description('Introduce los datos del proveedor y guárdalo para continuar con la factura de gasto. Ya podrás usarlo en futuras facturas de gasto sin tener que volver a introducirlo.')
-                                    ->aside()
-                                    ->schema([
-                                        TextInput::make('proveedor_nuevo_nombre')->label('Nombre o Razón Social')->required(),
-                                        TextInput::make('proveedor_nuevo_nif')->label('NIF / CIF')->required(),
-                                        TextInput::make('proveedor_nuevo_email')->label('Email')->email(),
-                                        TextInput::make('proveedor_nuevo_telefono')->label('Teléfono'),
-                                        TextInput::make('proveedor_nuevo_direccion')->label('Dirección'),
-                                        TextInput::make('proveedor_nuevo_cp')->label('CP'),
-                                        TextInput::make('proveedor_nuevo_ciudad')->label('Ciudad'),
-                                        TextInput::make('proveedor_nuevo_provincia')->label('Provincia'),
-                                        TextInput::make('proveedor_nuevo_pais')->label('País'),
-                                        Hidden::make('nuevo_proveedor_guardado')->default(false),
-
-                                        Actions::make([
-                                            Action::make('guardarProveedorNuevo')
-                                                ->label('Crear y Seleccionar Proveedor')
-                                                ->button()
-                                                ->color('success')
-                                                ->action(function ($set, $get) {
-                                                    $proveedor = \App\Models\Proveedor::create([
-                                                        'cliente_id' => $get('cliente_id'),
-                                                        'nombre' => $get('proveedor_nuevo_nombre'),
-                                                        'nif' => $get('proveedor_nuevo_nif'),
-                                                        'email' => $get('proveedor_nuevo_email'),
-                                                        'telefono' => $get('proveedor_nuevo_telefono'),
-                                                        'direccion' => $get('proveedor_nuevo_direccion'),
-                                                        'codigo_postal' => $get('proveedor_nuevo_cp'),
-                                                        'ciudad' => $get('proveedor_nuevo_ciudad'),
-                                                        'provincia' => $get('proveedor_nuevo_provincia'),
-                                                        'pais' => $get('proveedor_nuevo_pais'),
-                                                    ]);
-
-                                                    $set('proveedor_id', $proveedor->id);
-                                                    $set('nuevo_proveedor_guardado', true);
-
-                                                    Notification::make()
-                                                        ->title('Proveedor creado correctamente')
-                                                        ->success()
-                                                        ->send();
-                                                }),
-                                        ])->alignment('right'),
-                                    ])
-                                    ->visible(fn ($get) => $get('proveedor_id') === '__nuevo__'),
-
-                                // CAMPOS FACTURA
-                                Group::make([
-                                    TextInput::make('numero_factura')->label('Nº Factura')->required(),
-                                    DatePicker::make('fecha_expedicion')->label('Fecha de Expedición')->required(),
-                                    TextInput::make('base_imponible')->label('Base Imponible')->numeric()->prefix('€')->required(),
-                                    TextInput::make('cuota_iva')->label('Cuota IVA')->numeric()->prefix('€')->required(),
-                                    TextInput::make('total_factura')->label('Total Factura')->numeric()->prefix('€')->required(),
-                                ])
-                                ->visible(fn ($get) => filled($get('proveedor_id')) && $get('proveedor_id') !== '__nuevo__'),
-                            ]),
-                    ]),
-            ]),
-        ]);
-} */
 public static function form(Form $form): Form
 {
     return $form
         ->schema([
             Section::make('Subida y Visor de Justificante Factura')
+            
                 ->schema([
                     Grid::make(5)->schema([
                         Group::make()->columnSpan(3)->schema([
-                            Placeholder::make('visor_final')->hiddenLabel()
-                                ->content(function (Get $get): HtmlString {
-                                    $url = $get('vista_previa_url');
-                                    if (!$url) { return new HtmlString('<div style="text-align: center; padding: 2rem; border: 1px dashed #666;">Selecciona un archivo para previsualizarlo aquí.</div>'); }
-                                    $ext = pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION);
-                                    return match (true) {
-                                        in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp']) => new HtmlString("<img src='{$url}' style='width: 100%; border-radius: 5px;'>"),
-                                        $ext === 'pdf' => new HtmlString("<iframe src='{$url}' style='width: 100%; height: 75vh; border: 1px solid #444; border-radius: 5px;'></iframe>"),
-                                        default => new HtmlString("<div style='padding: 2rem; text-align: center; border: 1px dashed #666;'><a href='{$url}' target='_blank'>Ver documento</a></div>"),
-                                    };
-                                }),
+                           Placeholder::make('visor_final')
+    ->hiddenLabel()
+    ->content(function (Get $get, $record): HtmlString {
+        // Obtenemos la URL (para previsualización o para un registro existente)
+        $url = $get('vista_previa_url');
+        if (!$url && $record && $record->justificante_path) {
+            $url = route('file.view', ['path' => $record->justificante_path]);
+        }
+        
+        if (!$url) {
+            return new HtmlString('<div style="text-align: center; padding: 2rem; border: 1px dashed #666;">Selecciona un archivo para previsualizarlo aquí.</div>');
+        }
+        
+        // Obtenemos la extensión del archivo en minúsculas
+        $pathForExtension = $record?->justificante_path ?? parse_url($url, PHP_URL_PATH);
+        $ext = strtolower(pathinfo($pathForExtension, PATHINFO_EXTENSION));
+
+        // ✅ Usamos if/elseif/else en lugar de match
+        if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+            return new HtmlString("<img src='{$url}' style='width: 100%; border-radius: 5px;'>");
+        } elseif ($ext === 'pdf') {
+            return new HtmlString("<iframe src='{$url}' style='width: 100%; height: 75vh; border: 1px solid #444; border-radius: 5px;'></iframe>");
+        } else {
+            return new HtmlString("<div style='padding: 2rem; text-align: center; border: 1px dashed #666;'><a href='{$url}' target='_blank'>Ver documento</a></div>");
+        }
+    }),
                         ]),
                         Group::make()->columnSpan(2)->schema([
                             Hidden::make('tipo')->default('recibida'),
                             Hidden::make('vista_previa_url')->reactive(),
-                            FileUpload::make('justificante_path')->label('Seleccionar Factura de Gasto')
-                                ->disk('public')->directory('justificantes_facturas_temp')
-                                ->required()->reactive()
+                            FileUpload::make('justificante_path')
+                                ->label('Seleccionar Factura de Gasto')
+                                ->disk('public')
+                                ->directory('justificantes_facturas_temp')
+                                ->required()
+                                ->reactive()
                                 ->afterStateUpdated(function ($state, Set $set) {
-                                    if ($state) { $set('vista_previa_url', $state->temporaryUrl()); }
-                                }),
+                                if ($state instanceof UploadedFile) {
+                                    $path = $state->store('justificantes_facturas_temp', 'public');
+                                    // ✅ Usa la nueva ruta para generar la URL
+                                    $set('vista_previa_url', route('file.view', ['path' => $path]));
+                                }
+                            }),
+                       
                         ]),
                     ]),
                 ]),
@@ -236,7 +125,7 @@ public static function form(Form $form): Form
             Section::make('Datos del Proveedor')
                 ->visible(fn (Get $get) => !empty($get('cliente_id')))
                 ->schema([
-                    Grid::make(5)->schema([
+                    Grid::make(5)->extraAttributes(['class' => 'bg-green-500'])->schema([
                         Select::make('proveedor_id')
                             ->label('Proveedor')
                             ->helperText('Puedes crear uno nuevo desde NEW.')
@@ -316,12 +205,15 @@ public static function form(Form $form): Form
 
                                     // ✅ CORRECCIÓN: Se crea la descripción con el formato que pides
                                     $descripcionNuevaCuenta = 'Proveedor - ' . $data['nombre'];
+                                     // 1. Buscamos la cuenta principal en el catálogo
+                                     $cuentaCatalogoPadre = CuentaCatalogo::where('codigo', '400000000000')->first();
 
                                     // Se crea la nueva cuenta con la descripción correcta
                                     $nuevaCuenta = CuentaCliente::create([
                                         'cliente_id' => $clienteId,
                                         'codigo' => $nuevoCodigo,
                                         'descripcion' => $descripcionNuevaCuenta, // <-- Se usa la nueva descripción
+                                        'cuenta_catalogo_id' => $cuentaCatalogoPadre?->id,
                                     ]);
                                     
                                     // Se reemplaza el valor especial por el ID de la cuenta recién creada
@@ -360,6 +252,156 @@ public static function form(Form $form): Form
                         TextInput::make('numero_factura')->label('Número')->required(),
                     ]),
                 ]),
+//rpeater de lineas de factura de gasto
+
+Section::make('Líneas de Factura')->extraAttributes(['class' => 'p-2'])
+    ->visible(fn (Get $get) => filled($get('proveedor_id')))
+    ->schema([
+        Repeater::make('lineas')
+            ->relationship('lineas') // relación en RegistroFactura modelo, ajusta si otro nombre
+            ->columns(24)
+            ->defaultItems(1)
+            ->schema([
+                Grid::make(24)->schema([
+                    // Producto / Servicio unificado (base + cliente)
+                    Select::make('producto_servicio_id')
+                        ->label('Producto / Servicio')
+                        ->options(function () {
+                            $base = ProductoServicioBase::all()->mapWithKeys(fn($p) => ["base-{$p->id}" => $p->nombre])->toArray();
+                            $cliente = ProductoServicioCliente::all()->mapWithKeys(fn($p) => ["cliente-{$p->id}" => $p->nombre])->toArray();
+                            return $base + $cliente;
+                        })
+                        ->searchable()
+                        ->columnSpan(3)
+                        ->reactive()
+                        ->required(),
+
+                    TextInput::make('descripcion')
+                        ->label('Descripción')
+                        ->columnSpan(3)
+                        ->required(),
+
+                    Select::make('tipo_operacion')
+                        ->label('Tipo Operación Proveedor')
+                        ->options(fn () => collect(TipoOperacionProveedor::cases())
+                            ->mapWithKeys(fn ($tipo) => [
+                                $tipo->value => $tipo->getLabel(),
+                            ])
+                            ->toArray()
+                        )
+                        ->columnSpan(3)
+                        ->required(),
+
+                   Select::make('cuenta_contable')
+                            ->label('Cuenta Contable')
+                           ->options(function (Get $get): array {
+                                $options = [];
+
+                                // 1. Cargar las cuentas base del catálogo general
+                                $cuentasBase = CuentaCatalogo::where('tipo', '!=', 'ingreso')
+                                    ->where('codigo', 'not like', '400%')
+                                    ->get();
+                                
+                                foreach ($cuentasBase as $cuenta) {
+                                    $options["catalogo-{$cuenta->id}"] = "{$cuenta->codigo} - {$cuenta->descripcion}";
+                                }
+                                
+                                // 2. Cargar las cuentas específicas del cliente
+                                $clienteId = $get('../../cliente_id');
+                                if ($clienteId) {
+                                    $cuentasCliente = CuentaCliente::where('cliente_id', $clienteId)
+                                        ->where('codigo', 'not like', '400%')
+                                        ->whereHas('cuentaCatalogo', function ($query) {
+                                            $query->where('tipo', '!=', 'ingreso');
+                                        })
+                                        ->get();
+                                    
+                                    foreach ($cuentasCliente as $cuenta) {
+                                        $options["cliente-{$cuenta->id}"] = "{$cuenta->codigo} - {$cuenta->descripcion}";
+                                    }
+                                }
+                                
+                                // 3. Devolver el array combinado
+                                return $options;
+                            })
+   
+                            ->required()
+//                           ->searchable()
+                            ->columnSpan(3),
+                           //->preload(),
+
+                 /*    TextInput::make('cuenta_contable_descripcion')
+                        ->label('Descripción Cuenta Contable')
+                        ->columnSpan(4)
+                        ->disabled(), */
+
+                    TextInput::make('cantidad')
+                        ->label('Cantidad')
+                        ->numeric()
+                          //  ->extraInputAttributes(['inputmode' => 'decimal', 'pattern' => '[0-9]*', 'style' => '-moz-appearance: textfield; -webkit-appearance: none;'])
+
+                        ->columnSpan(1)
+                        ->required(),
+
+                    TextInput::make('precio_unitario')
+                        ->label('Precio Unitario')
+                        ->numeric()
+                        ->columnSpan(2)
+                        ->required(),
+
+                    TextInput::make('descuento_valor')
+                        ->label('Dto %')
+                        ->numeric()
+                        ->columnSpan(1),
+
+                    TextInput::make('importe')
+                        ->label('Importe')
+                        ->numeric()
+                        ->columnSpan(2)
+                        ->disabled(),
+
+                    Select::make('porcentaje_iva')
+                    ->label('% IVA')
+                  
+     ->options(fn () => TipoIva::where('activo', true)
+        ->orderBy('id')  // para mantener orden
+        ->get()
+        ->mapWithKeys(function ($iva) {
+            $label = $iva->recargo_equivalencia > 0
+                ? "{$iva->porcentaje}% + {$iva->recargo_equivalencia}%"
+                : "{$iva->porcentaje}%";
+            return [$iva->id => $label]; // Clave única por id
+        })
+        ->toArray())
+                    //->searchable()
+                    ->required()
+                    ->columnSpan(2),
+
+                Select::make('porcentaje_retencion_irpf')
+                    ->label('IRPF %')
+                    ->options(fn () => RetencionIrpf::where('activo', true)
+                        ->pluck('porcentaje', 'porcentaje')->toArray())
+                  //  ->searchable()
+                    ->required()
+                    ->columnSpan(2),
+
+                    TextInput::make('total')
+                        ->label('Total')
+                        ->numeric()
+                        ->columnSpan(2)
+                        ->disabled(),
+                ]),
+            ])
+            ->dehydrated() // Para que se guarde
+            ->disableLabel()
+          //  ->orderable()
+            ->createItemButtonLabel('Añadir línea'),
+    ]),
+
+
+
+
+
         ]);
 }
 

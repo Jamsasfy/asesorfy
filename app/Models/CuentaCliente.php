@@ -27,7 +27,7 @@ class CuentaCliente extends Model
 
     public function cuentaCatalogo(): BelongsTo
     {
-        return $this->belongsTo(CuentaCatalogo::class);
+        return $this->belongsTo(CuentaCatalogo::class, 'cuenta_catalogo_id');
     }
 
     public function getCodigoPrefijoAttribute(): ?string

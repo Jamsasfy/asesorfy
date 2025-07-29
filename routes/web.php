@@ -3,6 +3,8 @@
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 use App\Http\Controllers\FacturaPdfController; // <-- Asegúrate de que esta importación esté
+use App\Http\Controllers\FileViewController;
+
 
 
 Route::get('/', function () {
@@ -24,5 +26,12 @@ Route::middleware(['auth'])->group(function () {
 Route::get('/facturas/generar-pdf/{factura}', [FacturaPdfController::class, 'generarPdf'])
     ->name('facturas.generar-pdf')
     ->middleware('auth');
+
+    Route::get('/view-storage-file/{path}', [FileViewController::class, 'show'])
+    ->where('path', '.*')
+    ->name('file.view')
+    ->middleware('auth'); // <-- AÑADIR ESTA LÍNEA
+
+
 
 require __DIR__.'/auth.php';

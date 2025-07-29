@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 class RegistroFactura extends Model
 {
@@ -53,6 +54,8 @@ class RegistroFactura extends Model
         'estado' => EstadoRegistroFactura::class,
     ];
 
+    
+
     // Relación con el cliente dueño de la factura (cliente de AsesorFy)
     public function cliente(): BelongsTo
     {
@@ -77,6 +80,10 @@ class RegistroFactura extends Model
         return $this->hasMany(RegistroFacturaLinea::class);
     }
 
+
+
+
+
     // Lógica automática para calcular ejercicio y trimestre
     protected static function booted(): void
     {
@@ -93,5 +100,28 @@ class RegistroFactura extends Model
                 $registroFactura->trimestre = $registroFactura->fecha_expedicion->quarter . 'T';
             }
         });
+
+       
+
+       static::saved(function (RegistroFactura $registro) {
+    if ($registro->justificante_path && str_starts_with($registro->justificante_path, 'justificantes_facturas_temp/')) {
+        $nuevoPath = str_replace('justificantes_facturas_temp/', 'justificantes_facturas/', $registro->justificante_path);
+
+        // Comprueba que el archivo temporal existe antes de mover
+        if (Storage::disk('public')->exists($registro->justificante_path)) {
+
+            // Mueve el archivo temporal a la carpeta definitiva
+            Storage::disk('public')->move($registro->justificante_path, $nuevoPath);
+
+            // Actualiza la ruta en el modelo solo si la ruta cambia
+            if ($registro->justificante_path !== $nuevoPath) {
+                $registro->justificante_path = $nuevoPath;
+                $registro->saveQuietly();
+            }
+        }
+    }
+});
+
+
     }
 }

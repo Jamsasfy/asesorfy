@@ -32,6 +32,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+      
         Schema::defaultStringLength(191);
         Venta::observe(VentaObserver::class);       // <-- Añadir esta línea
         Proyecto::observe(ProyectoObserver::class); // <-- Añadir esta línea
